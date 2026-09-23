@@ -1,0 +1,17 @@
+# Ядро пайплайна
+pandas>=2.0
+pyarrow>=14.0
+networkx>=3.1
+numpy>=1.24
+scipy>=1.11
+
+# Интерфейс
+fastapi>=0.110
+uvicorn>=0.29
+
+# Визуализация-фолбэк
+pyvis>=0.3
+
+# Агент
+requests>=2.31
+python-dotenv>=1.0

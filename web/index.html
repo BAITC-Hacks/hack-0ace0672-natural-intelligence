@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Граф денег</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<style>
+  :root{
+    --bg:#0B1E3A; --panel:#11294c; --line:#1d3a63; --text:#e8eef7; --muted:#93a8c6;
+    --accent:#2DD4BF; --warn:#F59E0B;
+    --consolidator:#F59E0B; --distributor:#2DD4BF; --transit:#818cf8;
+    --coordinator:#f43f5e; --terminal:#64748b; --terminal_unknown:#3f4a5c; --peripheral:#2b3a52;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  #root{display:grid;grid-template-columns:320px 1fr 360px;height:100vh}
+  .panel{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:16px}
+  .panel:last-child{border-right:none;border-left:1px solid var(--line)}
+  h1{font-size:16px;margin:0 0 4px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:20px 0 8px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+  input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);
+        background:#0d2140;color:var(--text);font-size:13px}
+  input:focus{outline:none;border-color:var(--accent)}
+  #cy{width:100%;height:100vh;background:var(--bg)}
+  .row{padding:7px 9px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:baseline}
+  .row:hover{background:#17335c}
+  .rank{color:var(--muted);font-variant-numeric:tabular-nums;min-width:22px}
+  .gid{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .tag{font-size:10px;padding:1px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;color:#0B1E3A;font-weight:600}
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--line)}
+  .kv span:first-child{color:var(--muted)}
+  .kv span:last-child{font-variant-numeric:tabular-nums}
+  .ev{background:#0d2140;border-left:3px solid var(--accent);padding:9px 11px;border-radius:0 6px 6px 0;margin:10px 0;font-size:13px}
+  .legend{display:flex;flex-wrap:wrap;gap:6px}
+  .legend div{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+  .dot{width:9px;height:9px;border-radius:99px}
+  button{background:var(--accent);color:#06263a;border:0;border-radius:7px;padding:8px 14px;
+         font-weight:600;cursor:pointer;font-size:13px}
+  button:disabled{opacity:.5;cursor:default}
+  .msg{background:#0d2140;border-radius:8px;padding:10px 12px;margin:8px 0;white-space:pre-wrap;font-size:13px}
+  .msg.me{background:#17335c}
+  .err{color:var(--warn)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const {useState, useEffect, useRef} = React;
+
+const ROLE_COLORS = {
+  consolidator:'#F59E0B', distributor:'#2DD4BF', transit:'#818cf8',
+  coordinator:'#f43f5e', terminal:'#64748b', terminal_unknown:'#3f4a5c', peripheral:'#2b3a52'
+};
+const fmt = n => n == null ? '—' : Number(n).toLocaleString('ru-RU', {maximumFractionDigits:0});
+
+function Graph({onPick, focusRef}) {
+  const box = useRef(null), cy = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/graph').then(r => r.json()).then(data => {
+      cy.current = cytoscape({
+        container: box.current,
+        elements: [
+          ...data.nodes.map(n => ({data:{...n}})),
+          ...data.edges.map(e => ({data:{...e, id:`${e.source}->${e.target}`}}))
+        ],
+        style: [
+          {selector:'node', style:{
+            'background-color': el => ROLE_COLORS[el.data('role')] || '#2b3a52',
+            'width': el => 8 + el.data('priority')*26,
+            'height': el => 8 + el.data('priority')*26,
+            'border-width': el => el.data('is_seed') ? 2 : 0,
+            'border-color':'#fff'
+          }},
+          {selector:'edge', style:{
+            'width': el => Math.min(4, 0.4 + Math.log10(1 + el.data('sum_kzt'))/3),
+            'line-color':'#274a7d', 'target-arrow-color':'#274a7d',
+            'target-arrow-shape':'triangle', 'curve-style':'straight', 'arrow-scale':0.8
+          }},
+          {selector:'.hit', style:{
+            'background-color':'#fff','border-width':4,'border-color':'#2DD4BF',
+            'width':34,'height':34,'z-index':99
+          }},
+          {selector:'.dim', style:{'opacity':0.12}}
+        ],
+        // Концентрическая раскладка: кольца = колена обхода, seed в центре.
+        // Мгновенная и читается осмысленно. cose на сотнях узлов вешает вкладку.
+        layout:{
+          name:'concentric', animate:false, minNodeSpacing:16, avoidOverlap:true,
+          concentric: n => 5 - (n.data('depth') ?? 4),
+          levelWidth: () => 1
+        }
+      });
+      cy.current.on('tap','node', e => onPick(e.target.id()));
+    });
+  }, []);
+
+  // поиск по gid — must-have №5: жюри назовёт gid и попросит найти
+  focusRef.current = gid => {
+    const c = cy.current; if (!c) return false;
+    const n = c.getElementById(String(gid));
+    if (!n || n.empty()) return false;
+    c.elements().removeClass('hit dim');
+    const keep = n.closedNeighborhood();
+    c.elements().difference(keep).addClass('dim');
+    n.addClass('hit');
+    c.animate({center:{eles:n}, zoom:1.6}, {duration:350});
+    return true;
+  };
+
+  return <div id="cy" ref={box}></div>;
+}
+
+function NodeCard({gid}) {
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    if (!gid) return;
+    setD(null);
+    fetch(`/api/node/${gid}`).then(r => r.ok ? r.json() : null).then(setD);
+  }, [gid]);
+
+  if (!gid) return <p className="sub">Кликните узел на схеме или найдите по gid.</p>;
+  if (!d) return <p className="sub">Загрузка…</p>;
+
+  return (
+    <div>
+      <div className="gid" style={{fontSize:13,marginBottom:6}}>{d.gid}</div>
+      <span className="tag" style={{background:ROLE_COLORS[d.role]}}>{d.role}</span>
+      <div className="ev">{d.evidence}</div>
+      <div className="kv"><span>уверенность в роли</span><span>{d.role_score}</span></div>
+      <div className="kv"><span>приоритет</span><span>{d.priority_score}</span></div>
+      <div className="kv"><span>кластер</span><span>{d.cluster_id}</span></div>
+      <div className="kv"><span>колено обхода</span><span>{d.depth}{d.is_seed ? ' (seed)' : ''}</span></div>
+      <div className="kv"><span>получил / отправил</span><span>{fmt(d.in_kzt)} / {fmt(d.out_kzt)} ₸</span></div>
+      <div className="kv"><span>контрагентов вх / исх</span><span>{d.in_deg} / {d.out_deg}</span></div>
+      <div className="kv"><span>доля денег фигурантов</span><span>{d.taint_share?.toFixed?.(2)}</span></div>
+      <h2>Крупнейшие плательщики</h2>
+      {(d.top_senders||[]).map(s =>
+        <div className="kv" key={s.src}><span className="gid">{s.src}</span><span>{fmt(s.sum_kzt)} ₸</span></div>)}
+      <h2>Крупнейшие получатели</h2>
+      {(d.top_receivers||[]).map(s =>
+        <div className="kv" key={s.dst}><span className="gid">{s.dst}</span><span>{fmt(s.sum_kzt)} ₸</span></div>)}
+    </div>
+  );
+}
+
+function Chat({onCite}) {
+  const [q, setQ] = useState(''), [log, setLog] = useState([]), [busy, setBusy] = useState(false);
+
+  const send = () => {
+    if (!q.trim() || busy) return;
+    const question = q;
+    setLog(l => [...l, {me:true, text:question}]); setQ(''); setBusy(true);
+    fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+                       body: JSON.stringify({question})})
+      .then(r => r.json())
+      .then(r => { setLog(l => [...l, {text:r.answer, mode:r.mode}]);
+                   if (r.cited_gids?.length) onCite(r.cited_gids[0]); })
+      .catch(e => setLog(l => [...l, {text:'Ошибка: '+e, err:true}]))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div>
+      <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key==='Enter' && send()}
+             placeholder="Кто собирает деньги с этих пятерых?" />
+      <div style={{margin:'8px 0'}}><button onClick={send} disabled={busy}>{busy ? 'Думает…' : 'Спросить'}</button></div>
+      {log.map((m,i) =>
+        <div key={i} className={'msg' + (m.me?' me':'') + (m.err?' err':'')}>
+          {m.text}
+          {m.mode === 'fallback' && <div className="sub" style={{marginTop:6}}>шаблонный режим, без LLM</div>}
+        </div>)}
+    </div>
+  );
+}
+
+function App() {
+  const [top, setTop] = useState([]), [gid, setGid] = useState(null), [q, setQ] = useState('');
+  const focus = useRef(null);
+
+  useEffect(() => { fetch('/api/top').then(r => r.json()).then(setTop); }, []);
+
+  const pick = g => { setGid(g); focus.current && focus.current(g); };
+
+  return (
+    <>
+      <div className="panel">
+        <h1>Граф денег</h1>
+        <div className="sub">2 248 узлов · 81 фигурант · июль 2026</div>
+
+        <input value={q} onChange={e => setQ(e.target.value)}
+               onKeyDown={e => { if (e.key === 'Enter') pick(q.trim()); }}
+               placeholder="Поиск по gid — Enter" />
+
+        <h2>Роли на схеме</h2>
+        <div className="legend">
+          {Object.entries(ROLE_COLORS).map(([r,c]) =>
+            <div key={r}><i className="dot" style={{background:c}}></i>{r}</div>)}
+        </div>
+
+        <h2>Топ приоритета</h2>
+        {top.map(t =>
+          <div className="row" key={t.gid} onClick={() => pick(t.gid)}>
+            <span className="rank">{t.rank}</span>
+            <span className="gid">{t.gid}</span>
+            <span style={{marginLeft:'auto',color:ROLE_COLORS[t.role]}}>{t.priority_score.toFixed(2)}</span>
+          </div>)}
+      </div>
+
+      <Graph onPick={pick} focusRef={focus} />
+
+      <div className="panel">
+        <h2>Карточка узла</h2>
+        <NodeCard gid={gid} />
+        <h2>Ассистент аналитика</h2>
+        <Chat onCite={pick} />
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

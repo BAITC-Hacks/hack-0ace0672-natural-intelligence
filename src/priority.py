@@ -83,8 +83,21 @@ def top_nodes(df: pd.DataFrame, n: int = 25) -> pd.DataFrame:
     return top[cols]
 
 
+# Роль называется по-русски и по смыслу: строка why читается аналитиком напрямую,
+# в интерфейсе и в выгрузке, а английский ярлык требует перевода в уме.
+ROLE_RU = {
+    "coordinator": "связующий узел",
+    "consolidator": "сбор средств",
+    "distributor": "распределение",
+    "transit": "транзит",
+    "terminal": "конечный получатель",
+    "terminal_unknown": "граница обхода",
+    "peripheral": "недостаточно признаков",
+}
+
+
 def _why(r) -> str:
-    bits = [f"роль {r.role} (уверенность {r.role_score:.2f})"]
+    bits = [f"{ROLE_RU.get(r.role, r.role)}, уверенность {r.role_score:.2f}"]
     if r.external_funding_gap > 0:
         bits.append(f"отдал на {r.external_funding_gap/1e6:.1f} млн больше, чем получил в графе — источник вне выборки")
     if r.out_deg >= 10:
@@ -95,7 +108,6 @@ def _why(r) -> str:
         bits.append(f"пропускает насквозь (transit_ratio {r.transit_ratio:.2f})")
     if r.n_seeds_upstream >= 2:
         bits.append(f"деньги от {r.n_seeds_upstream} фигурантов")
-    bits.append(f"taint {r.taint_share:.2f}")
     return "; ".join(bits)[:400]
 
 

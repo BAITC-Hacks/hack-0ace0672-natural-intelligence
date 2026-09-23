@@ -59,14 +59,16 @@
   <!-- ВЫГРУЗКИ -->
   <rect x="235" y="300" width="845" height="92" rx="9" fill="#ffffff" stroke="#f59e0b" stroke-width="2"/>
   <text x="657" y="326" text-anchor="middle" font-size="14" font-weight="600" fill="#b45309">ВЫГРУЗКИ · схема заморожена, валидатор в конце run.py</text>
-  <text x="380" y="353" text-anchor="middle" font-size="12.5" fill="#334155">nodes_roles.csv</text>
-  <text x="380" y="373" text-anchor="middle" font-size="12" fill="#64748b">2 248 строк</text>
-  <text x="565" y="353" text-anchor="middle" font-size="12.5" fill="#334155">clusters.csv</text>
-  <text x="565" y="373" text-anchor="middle" font-size="12" fill="#64748b">89 строк</text>
-  <text x="750" y="353" text-anchor="middle" font-size="12.5" fill="#334155">top_nodes.csv</text>
-  <text x="750" y="373" text-anchor="middle" font-size="12" fill="#64748b">25 строк</text>
-  <text x="935" y="353" text-anchor="middle" font-size="12.5" fill="#334155">graph.json</text>
-  <text x="935" y="373" text-anchor="middle" font-size="12" fill="#64748b">для интерфейса</text>
+  <text x="320" y="353" text-anchor="middle" font-size="12.5" fill="#334155">nodes_roles.csv</text>
+  <text x="320" y="373" text-anchor="middle" font-size="12" fill="#64748b">2 248 строк</text>
+  <text x="490" y="353" text-anchor="middle" font-size="12.5" fill="#334155">clusters.csv</text>
+  <text x="490" y="373" text-anchor="middle" font-size="12" fill="#64748b">89 строк</text>
+  <text x="660" y="353" text-anchor="middle" font-size="12.5" fill="#334155">top_nodes.csv</text>
+  <text x="660" y="373" text-anchor="middle" font-size="12" fill="#64748b">25 строк</text>
+  <text x="830" y="353" text-anchor="middle" font-size="12.5" fill="#334155">graph.json</text>
+  <text x="830" y="373" text-anchor="middle" font-size="12" fill="#64748b">для интерфейса</text>
+  <text x="1000" y="353" text-anchor="middle" font-size="12.5" fill="#334155">resilience.csv</text>
+  <text x="1000" y="373" text-anchor="middle" font-size="12" fill="#64748b">устойчивость</text>
 
   <line x1="987" y1="240" x2="987" y2="294" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
 

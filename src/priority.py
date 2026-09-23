@@ -8,24 +8,48 @@ import numpy as np
 import pandas as pd
 
 WEIGHTS = {
-    "flow": 0.30,       # сколько денег через узел прошло
+    "flow": 0.30,       # объём, прошедший через узел
     "external": 0.25,   # точка вливания средств извне выборки
     "ppr": 0.20,        # куда стекаются деньги фигурантов
     "transit": 0.15,    # чистота транзитного паттерна
-    "seeds": 0.10,      # сколько фигурантов выше по течению
+    "seeds": 0.10,      # сколько разных фигурантов выше по течению
 }
+
+# ПОЧЕМУ taint_share НЕ входит в композит.
+# Граф построен BFS-обходом от 81 seed, поэтому почти всё в нём по построению
+# ниже по течению от фигурантов: среднее taint 0.75, у 888 узлов выше 0.9,
+# у 75% ровно 1.0. Умножение оборота на taint вырождается в ранжирование
+# по обороту и создаёт ложное впечатление, будто признак работает.
+# Полезно не само значение, а его дополнение external_share = 1 - taint_share:
+# оно выделяет узлы, разбавленные деньгами извне выборки. Косвенно оно и учтено —
+# через external_funding_gap. Сам taint_share остаётся в evidence как контекст.
 
 
 def _norm(s: pd.Series) -> pd.Series:
-    """Ранговая нормировка: устойчива к выбросам, а их здесь много (max out_deg 116)."""
+    """Ранговая нормировка — для величин, где важен порядок, а не масштаб."""
     return s.rank(pct=True).fillna(0.0)
+
+
+def _norm_money(s: pd.Series) -> pd.Series:
+    """Логарифмическая нормировка для денежных величин.
+
+    Ранговая здесь даёт грубое искажение: положительный external_funding_gap
+    есть лишь у 377 узлов из 2248, поэтому по рангу узел с разрывом 5 тыс. KZT
+    получает почти тот же вклад, что узел с разрывом 22 млн. Логарифм сохраняет
+    порядок величин и при этом сжимает хвост (max/min здесь отличаются в тысячи раз).
+    """
+    s = s.clip(lower=0).fillna(0.0)
+    top = float(s.max())
+    if top <= 0:
+        return pd.Series(0.0, index=s.index)
+    return np.log1p(s) / np.log1p(top)
 
 
 def score(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    flow = _norm(df.taint_share * df.out_kzt)
-    external = _norm(df.external_funding_gap.clip(lower=0))
+    flow = _norm_money(df.out_kzt)
+    external = _norm_money(df.external_funding_gap)
     ppr = _norm(df.ppr)
     fast = (df.median_delay_days >= 0) & (df.median_delay_days <= 2)
     transit = df.transit_ratio * np.where(fast, 1.0, 0.5)

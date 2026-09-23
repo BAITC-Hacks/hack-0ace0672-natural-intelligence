@@ -57,6 +57,7 @@ def main() -> None:
              "transit_ratio", "net_flow", "external_funding_gap", "taint_share",
              "external_share", "ppr", "n_seeds_upstream", "median_delay_days",
              "hhi_in", "hhi_out", "in_cycle_le6", "was_expanded",
+             "in_tx", "out_tx", "max_edge_n_tx", "sync_in_events", "sent_before_received",
              "cycle_time_ok", "passthrough_matches",
              "shared_receivers_max", "shared_receivers_z"]
     df[schema.NODES_ROLES_COLUMNS + extra].to_csv(a.out / "nodes_roles.csv", index=False)

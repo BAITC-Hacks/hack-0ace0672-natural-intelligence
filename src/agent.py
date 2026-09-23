@@ -73,7 +73,16 @@ TOOLS_SPEC = [
             "role": {"type": "string", "enum": schema.ROLES},
             "cluster_id": {"type": "integer"}, "n": {"type": "integer"}}}}},
     {"type": "function", "function": {
-        "name": "cluster_summary", "description": "Сводка по кластеру: состав ролей, оборот, гипотеза",
+        "name": "list_clusters",
+        "description": "Список кластеров сразу: по числу фигурантов (n_seed, по умолчанию), "
+                       "размеру (n_nodes), обороту или приоритету. Для вопросов вида «какие "
+                       "кластеры самые крупные/значимые» вызывать ЭТОТ инструмент, а не "
+                       "cluster_summary по одному",
+        "parameters": {"type": "object", "properties": {
+            "n": {"type": "integer"},
+            "by": {"type": "string", "enum": ["n_seed", "n_nodes", "sum_kzt_internal", "max_priority"]}}}}},
+    {"type": "function", "function": {
+        "name": "cluster_summary", "description": "Сводка по ОДНОМУ кластеру: состав ролей, оборот, гипотеза",
         "parameters": {"type": "object", "properties": {"cluster_id": {"type": "integer"}}, "required": ["cluster_id"]}}},
     {"type": "function", "function": {
         "name": "find_nodes",
@@ -126,7 +135,7 @@ def _post(payload: dict, key: str) -> dict:
         return json.load(r)
 
 
-def _ask_llm(question: str, key: str, max_rounds: int = 4) -> dict:
+def _ask_llm(question: str, key: str, max_rounds: int = 6) -> dict:
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": question}]
     used: list[str] = []
     for _ in range(max_rounds):

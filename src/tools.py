@@ -191,6 +191,26 @@ def top_nodes(role: str | None = None, cluster_id: int | None = None, n: int = 1
     })
 
 
+def list_clusters(n: int = 5, by: str = "n_seed") -> dict:
+    """Список кластеров: по числу фигурантов (по умолчанию) или по размеру.
+
+    Без этого инструмента модель перебирает cluster_summary по одному
+    и упирается в лимит раундов — проверено на живом ключе.
+    """
+    _, clusters, _, _ = _data()
+    if by not in ("n_seed", "n_nodes", "sum_kzt_internal", "max_priority"):
+        return {"error": f"сортировка '{by}' не поддерживается",
+                "known": ["n_seed", "n_nodes", "sum_kzt_internal", "max_priority"]}
+    cols = [c for c in ("cluster_id", "n_nodes", "n_seed", "sum_kzt_internal",
+                        "dominant_role", "max_priority", "top_gids", "hypothesis")
+            if c in clusters.columns]
+    return _clean({
+        "total": len(clusters),
+        "sorted_by": by,
+        "clusters": clusters.nlargest(n, by)[cols].to_dict("records"),
+    })
+
+
 def cluster_summary(cluster_id: int) -> dict:
     """Состав ролей, оборот, число seed и гипотеза по кластеру."""
     nodes, clusters, _, _ = _data()
@@ -323,6 +343,7 @@ TOOL_REGISTRY = {
     "who_collects_from": who_collects_from,
     "trace_path": trace_path,
     "top_nodes": top_nodes,
+    "list_clusters": list_clusters,
     "cluster_summary": cluster_summary,
     "find_nodes": find_nodes,
     "network_resilience": network_resilience,

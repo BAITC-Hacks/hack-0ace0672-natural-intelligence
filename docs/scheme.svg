@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 560" width="1160" height="560" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1160" height="560" fill="#f8fafc" rx="10"/>
+
+  <text x="580" y="42" text-anchor="middle" font-size="23" font-weight="600" fill="#0f172a">Граф денег — от выгрузки до очереди проверки</text>
+  <text x="580" y="68" text-anchor="middle" font-size="15" fill="#475569">полный пересчёт 2.4 секунды, офлайн, без ключей и GPU</text>
+
+  <!-- ДАННЫЕ -->
+  <rect x="30" y="110" width="170" height="130" rx="9" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+  <text x="115" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#0f172a">ДАННЫЕ</text>
+  <text x="115" y="162" text-anchor="middle" font-size="13" fill="#334155">edges · 3 119</text>
+  <text x="115" y="184" text-anchor="middle" font-size="13" fill="#334155">nodes · 2 248</text>
+  <text x="115" y="206" text-anchor="middle" font-size="13" fill="#334155">transactions · 4 840</text>
+  <text x="115" y="228" text-anchor="middle" font-size="12" fill="#64748b">81 фигурант, 365.9 млн ₸</text>
+
+  <!-- ПРИЗНАКИ -->
+  <rect x="235" y="110" width="185" height="130" rx="9" fill="#ffffff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="327" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#1d4ed8">ПРИЗНАКИ</text>
+  <text x="327" y="161" text-anchor="middle" font-size="12.5" fill="#334155">24 на узел</text>
+  <text x="327" y="183" text-anchor="middle" font-size="12.5" fill="#334155">taint · PPR · transit_ratio</text>
+  <text x="327" y="205" text-anchor="middle" font-size="12.5" fill="#334155">HHI · задержки · циклы</text>
+  <text x="327" y="228" text-anchor="middle" font-size="12" fill="#64748b">чьи это деньги</text>
+
+  <!-- РОЛИ -->
+  <rect x="455" y="110" width="185" height="130" rx="9" fill="#ffffff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="547" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#6d28d9">РОЛИ</text>
+  <text x="547" y="161" text-anchor="middle" font-size="12.5" fill="#334155">8 пороговых правил</text>
+  <text x="547" y="183" text-anchor="middle" font-size="12.5" fill="#334155">пороги = перцентили</text>
+  <text x="547" y="205" text-anchor="middle" font-size="12.5" fill="#334155">role_score + evidence</text>
+  <text x="547" y="228" text-anchor="middle" font-size="12" fill="#64748b">объяснимо, без ML-ящика</text>
+
+  <!-- КЛАСТЕРЫ -->
+  <rect x="675" y="110" width="185" height="130" rx="9" fill="#ffffff" stroke="#0d9488" stroke-width="2"/>
+  <text x="767" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#0f766e">КЛАСТЕРЫ</text>
+  <text x="767" y="161" text-anchor="middle" font-size="12.5" fill="#334155">35 компонент связности</text>
+  <text x="767" y="183" text-anchor="middle" font-size="12.5" fill="#334155">+ Louvain внутри крупных</text>
+  <text x="767" y="205" text-anchor="middle" font-size="12.5" fill="#334155">89 кластеров</text>
+  <text x="767" y="228" text-anchor="middle" font-size="12" fill="#64748b">гипотеза по составу ролей</text>
+
+  <!-- ПРИОРИТЕТ -->
+  <rect x="895" y="110" width="185" height="130" rx="9" fill="#ffffff" stroke="#e11d48" stroke-width="2"/>
+  <text x="987" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#be123c">ПРИОРИТЕТ</text>
+  <text x="987" y="161" text-anchor="middle" font-size="12.5" fill="#334155">композит из 5 слагаемых</text>
+  <text x="987" y="183" text-anchor="middle" font-size="12.5" fill="#334155">0.30 поток · 0.25 извне</text>
+  <text x="987" y="205" text-anchor="middle" font-size="12.5" fill="#334155">0.20 PPR · 0.15 транзит</text>
+  <text x="987" y="228" text-anchor="middle" font-size="12" fill="#64748b">кого смотреть первым</text>
+
+  <!-- стрелки между этапами -->
+  <line x1="200" y1="175" x2="228" y2="175" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="420" y1="175" x2="448" y2="175" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="640" y1="175" x2="668" y2="175" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="860" y1="175" x2="888" y2="175" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ВЫГРУЗКИ -->
+  <rect x="235" y="300" width="845" height="92" rx="9" fill="#ffffff" stroke="#f59e0b" stroke-width="2"/>
+  <text x="657" y="326" text-anchor="middle" font-size="14" font-weight="600" fill="#b45309">ВЫГРУЗКИ · схема заморожена, валидатор в конце run.py</text>
+  <text x="380" y="353" text-anchor="middle" font-size="12.5" fill="#334155">nodes_roles.csv</text>
+  <text x="380" y="373" text-anchor="middle" font-size="12" fill="#64748b">2 248 строк</text>
+  <text x="565" y="353" text-anchor="middle" font-size="12.5" fill="#334155">clusters.csv</text>
+  <text x="565" y="373" text-anchor="middle" font-size="12" fill="#64748b">89 строк</text>
+  <text x="750" y="353" text-anchor="middle" font-size="12.5" fill="#334155">top_nodes.csv</text>
+  <text x="750" y="373" text-anchor="middle" font-size="12" fill="#64748b">25 строк</text>
+  <text x="935" y="353" text-anchor="middle" font-size="12.5" fill="#334155">graph.json</text>
+  <text x="935" y="373" text-anchor="middle" font-size="12" fill="#64748b">для интерфейса</text>
+
+  <line x1="987" y1="240" x2="987" y2="294" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ПОТРЕБИТЕЛИ -->
+  <rect x="235" y="440" width="400" height="92" rx="9" fill="#ffffff" stroke="#0ea5e9" stroke-width="2"/>
+  <text x="435" y="466" text-anchor="middle" font-size="14" font-weight="600" fill="#0369a1">ИНТЕРФЕЙС АНАЛИТИКА</text>
+  <text x="435" y="490" text-anchor="middle" font-size="12.5" fill="#334155">схема сети · поиск по gid · карточка узла · топ-лист</text>
+  <text x="435" y="512" text-anchor="middle" font-size="12" fill="#64748b">React 18 + Cytoscape.js с CDN, без сборки</text>
+
+  <rect x="680" y="440" width="400" height="92" rx="9" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+  <text x="880" y="466" text-anchor="middle" font-size="14" font-weight="600" fill="#15803d">AI-АССИСТЕНТ</text>
+  <text x="880" y="490" text-anchor="middle" font-size="12.5" fill="#334155">6 инструментов на pandas, tool-calling</text>
+  <text x="880" y="512" text-anchor="middle" font-size="12" fill="#64748b">только числа из выгрузок, фолбэк без сети</text>
+
+  <line x1="435" y1="392" x2="435" y2="434" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="880" y1="392" x2="880" y2="434" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+</svg>

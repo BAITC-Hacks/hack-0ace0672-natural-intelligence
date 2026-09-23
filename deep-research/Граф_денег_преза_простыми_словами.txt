@@ -1,0 +1,307 @@
+# Граф денег: восстановление финансовой структуры группы
+### Текст презентации, 20 слайдов
+
+Единый визуальный стиль для всех промптов: тёмно-синий фон (#0B1E3A), акцент — бирюзовый (#2DD4BF) и янтарный (#F59E0B), плоская векторная графика, тонкие линии, без текста внутри изображения, без людей с различимыми лицами.
+
+---
+
+## Слайд 1. Титул
+
+**Граф денег**
+Восстановление финансовой структуры организованной группы по транзакционной сети
+
+HackAlem AI · трек «Финансы» · 5 часов
+
+> Говорим: у аналитика есть 81 имя. За ними — сеть из 2 248 счетов. Задача — за минуты показать, кто в этой сети главный.
+
+**Промпт для изображения:**
+`Abstract network of glowing nodes and directed edges emerging from darkness, a few bright amber nodes at the bottom, hundreds of teal nodes fanning upward and outward, money-flow arrows, dark navy background, flat vector style, cinematic depth, no text`
+
+---
+
+## Слайд 2. Откуда взялась задача
+
+- Правоохранительные органы передают банку список клиентов по делу о незаконном обороте наркотиков — **81 человек**
+- Это **нижний уровень** цепочки: курьеры, получатели, дропы
+- Кто собирает деньги, через кого их прогоняют, кто ими в итоге распоряжается — неизвестно
+- Блокируется только низ. Организаторы восстанавливают инфраструктуру за дни
+
+**Промпт:**
+`Iceberg metaphor in abstract vector style: small visible tip made of 81 tiny amber dots above waterline, massive hidden structure of interconnected teal nodes below, dark navy water, flat minimal design, no text`
+
+---
+
+## Слайд 3. Пользователь и его боль
+
+**AML-аналитик подразделения финансового мониторинга банка второго уровня**
+
+| Что происходит сейчас | Масштаб |
+|---|---|
+| Ручная трассировка цепочки на 4 колена | часы на один узел |
+| Основная часть сети невидима | известен 81, реальная сеть — 2 248 |
+| Приоритет проверки выбирается интуитивно | ранжирования нет |
+
+> Аналитик не просит модель. Он просит ответ на вопрос «кого смотреть первым и почему».
+
+**Промпт:**
+`Analyst workstation from above, flat isometric vector: desk buried under stacks of printed transaction sheets and tangled red string connecting them, single glowing screen showing a clean network graph, contrast between chaos and clarity, dark navy and amber, no text, no faces`
+
+---
+
+## Слайд 4. Что такое граф денег
+
+- **Узел** — клиент банка (обезличенный `gid`)
+- **Ребро** — направленный перевод: кто → кому
+- **Вес** — сумма в тенге и количество транзакций
+- Направление критично: A→B и B→A — совершенно разные истории
+
+Граф превращает список транзакций в **структуру**: видно не отдельные платежи, а роли участников.
+
+**Промпт:**
+`Side-by-side conceptual diagram, flat vector: left side a boring monochrome table of rows and numbers, right side the same data transformed into a glowing directed network with arrows and node sizes, transformation arrow between them, dark navy background, teal and amber accents, no readable text`
+
+---
+
+## Слайд 5. Что дано
+
+| Файл | Строк | Содержание |
+|---|---|---|
+| `edges.parquet` | 3 119 | пара плательщик→получатель, агрегат за месяц |
+| `nodes.parquet` | 2 248 | клиент: `gid`, `depth`, `is_seed` |
+| `transactions.parquet` | 4 840 | отдельная транзакция с датой |
+
+- Период: июль 2026, только внутрибанковские переводы
+- Оборот: **365 890 012 KZT**
+- **Атрибутов клиентов нет вообще** — ни возраста, ни типа операции, ни остатков
+
+**Промпт:**
+`Three stylized data file cards floating in space, connected by thin glowing lines, each card showing abstract column patterns, flat vector, dark navy background, teal accents, minimal, no readable text`
+
+---
+
+## Слайд 6. Как собран граф
+
+**BFS-обход от 81 seed по исходящим переводам, глубина 4 колена, порог ≥5 000 KZT**
+
+| Колено | Новых узлов |
+|---|---|
+| 0 (seed) | 81 |
+| 1 | 472 |
+| 2 | 462 |
+| 3 | 789 |
+| 4 | 444 |
+| **Итого** | **2 248** |
+
+> Каждый параметр этого обхода — источник систематического искажения. Следующие четыре слайда об этом.
+
+**Промпт:**
+`Breadth-first search expansion visualized as concentric rings of nodes radiating from a small central cluster, ring 0 amber and tiny, rings 1-4 progressively larger and more teal, outermost ring cut off abruptly at a hard boundary line, flat vector, dark navy, no text`
+
+---
+
+## Слайд 7. Проблема 1 — обрыв на 4-м колене
+
+- **444 узла** имеют `depth = 4` и ноль исходящих
+- Наивный признак «`out_degree = 0` ⇒ конечный получатель» даст **444 ложных стока**
+- Обход просто закончился на них — есть ли у них переводы дальше, из данных не видно
+
+**Что мы обнаружили при проверке:** всего узлов без исходящих — **1 554**. Из них 444 на границе, а **1 110 — на коленах 1–3**. Их обход разворачивал и исходящих не нашёл. Это настоящие стоки, и они отделимы.
+
+**Промпт:**
+`Network graph where the outer layer of nodes is cut by a sharp vertical glass wall, nodes beyond the wall faded into fog and question marks implied by empty space, inner nodes clearly terminating with no outgoing arrows, flat vector, dark navy, amber boundary line, no text`
+
+---
+
+## Слайд 8. Проблема 2 — видны только исходящие
+
+- Граф собран **от** seed по исходящим переводам
+- Деньги, которые seed получил извне выборки, в данных отсутствуют
+- `pass_through = out/in` у seed доходит до 20+ — это не аномалия, это устройство выгрузки
+- **335 не-seed узлов отдают больше, чем получили**
+
+**Масштаб:** суммарный разрыв — **229,9 млн из 365,9 млн оборота**. Почти две трети денег в графе имеют происхождение вне выборки.
+
+**Промпт:**
+`A funnel where water pours out the bottom abundantly but the top inlet is mostly hidden behind a dark curtain, only a thin visible trickle entering, abstract flat vector, teal liquid, dark navy background, amber curtain edge, no text`
+
+---
+
+## Слайд 9. Проблема 3 — порог 5 000 KZT
+
+- Транзакции меньше 5 000 KZT в выгрузку не попали
+- Дробление сумм ниже порога **невидимо в принципе**
+- Регуляторный порог финмониторинга в РК заметно выше, то есть граф намеренно включает подпороговую активность — но нижняя граница всё равно обрезана
+
+**Что видно:** одно ребро с **67 переводами по ~20 тыс.**, 29 рёбер с 10+ транзакциями. Это видимая верхушка дробления.
+
+**Промпт:**
+`A sieve or mesh filter viewed edge-on, large teal coins passing through and captured above, countless tiny amber particles falling through the mesh into darkness below, flat vector, dark navy, no text`
+
+---
+
+## Слайд 10. Проблема 4 — нет размеченных ролей
+
+- **Ground truth отсутствует.** Никто не знает, кто здесь консолидатор
+- Supervised ML неприменим напрямую — учиться не на чем
+- Оценка идёт не по accuracy, а **по обоснованности критериев**
+- Жюри назовёт три случайных `gid` и попросит объяснить роль за минуту
+
+> Это разворачивает задачу: побеждает не самая точная модель, а самая защитимая.
+
+**Промпт:**
+`Network graph where every node is a featureless grey sphere with a question mark shape implied by a hollow center, one node highlighted by a spotlight beam from above, flat vector, dark navy, amber spotlight, no text`
+
+---
+
+## Слайд 11. Что реально оказалось в данных
+
+Мы посчитали граф, а не поверили описанию:
+
+- Средняя степень **2,78**, но распределение крайне неравномерно: медиана `out_deg` = 0, максимум = 116
+- **1 535 узлов только принимают**, 23 только отправляют, 671 имеет и то и другое
+- Содержательные роли живут на **~694 узлах**, остальные — листья по конструкции
+- **177 взаимных пар A↔B**, тысячи циклов длиной ≤8 — возвратные потоки есть
+- Достижимость от seed доходит до **15 шагов**, хотя глубина обхода 4
+
+**Промпт:**
+`Degree distribution visualized as a long-tail histogram morphing into a network: a huge mass of tiny leaf nodes on the left, a thin tail of massive hub nodes on the right connected by bright edges, flat vector, dark navy, teal to amber gradient, no text`
+
+---
+
+## Слайд 12. Словарь ролей
+
+| Роль | Смысл | Структурный признак |
+|---|---|---|
+| `consolidator` | точка консолидации | высокий fan-in, отдаёт малую долю |
+| `transit` | пропускает дальше, не удерживая | вход ≈ выход, короткое удержание |
+| `distributor` | веерное распределение | высокий fan-out |
+| `terminal` | деньги пришли и остались | исходящих нет, узел был развёрнут |
+| `coordinator` | кандидат в организаторы | связывает несколько цепочек и seed |
+| `peripheral` | признаков роли не выявлено | низкие степени |
+
+**Промпт:**
+`Six distinct network motif icons arranged in a clean grid: fan-in convergence, straight pass-through chain, fan-out spray, dead-end sink, multi-chain hub, isolated leaf pair; each motif in glowing teal on dark navy cards, flat vector, no text`
+
+---
+
+## Слайд 13. Как устроен AML-стек в индустрии
+
+Четыре слоя, одинаковые почти во всех банках:
+
+1. **Rule engine** — детерминированные пороговые сценарии. Даёт основную массу алертов
+2. **ML-скоринг** — приоритизация алертов, сегментация, аномалии
+3. **Графовая аналитика** — entity resolution, link analysis, выявление сетей
+4. **Case management** — интерфейс расследователя, генерация SAR
+
+Наша задача — «присвоить роль узлу» — живёт на **третьем слое** и называется там network risk scoring / pattern detection.
+
+**Промпт:**
+`Four horizontal translucent layers stacked in isometric perspective, data flowing upward through them as glowing particles, each layer a different density pattern, dark navy background, teal particles, amber highlight on the third layer, flat vector, no text`
+
+---
+
+## Слайд 14. Почему правила не вытеснены машинным обучением
+
+- **90–95% алертов transaction monitoring — ложные срабатывания** (оценка PwC, широко цитируется в отрасли); отраслевые обзоры дают диапазон 85–95%
+- Конверсия алертов в SAR 5–10% считается здоровой, часто она ниже 1%
+- По опросу Bank Policy Institute банки оценивают трудозатраты примерно в **21 час на один SAR** — против собственной оценки FinCEN около 2 часов
+
+Причина не в том, что ML не работает. Причина в том, что **необъяснимую модель невозможно защитить** — ни перед регулятором, ни перед аналитиком.
+
+**Промпт:**
+`Large funnel filled with hundreds of identical grey alert icons pouring in at the top, only three or four amber ones emerging at the bottom, the rest dissolving, flat vector, dark navy background, no text`
+
+---
+
+## Слайд 15. Объяснимость как требование, а не опция
+
+- **SR 11-7** (Fed/OCC) — де-факто мировой стандарт управления модельным риском: концептуальная обоснованность, постоянный мониторинг, анализ результатов
+- **SR 21-8** распространяет тот же подход на BSA/AML-модели
+- **NYDFS Part 504**, **EU AMLR**, **EU AI Act** — тот же вектор: аудируемый след
+- Требование документации: «человек, незнакомый с моделью, должен понять, как она работает и каковы её ограничения»
+
+**Следствие для нас:** роль без интерпретируемого правила не засчитывается. Это прямо записано в ТЗ.
+
+**Промпт:**
+`A glass box replacing a black box: transparent cube with visible internal gears and flowing logic paths inside, a matte black cube beside it crossed out subtly by a thin amber line, flat vector, dark navy background, no text`
+
+---
+
+## Слайд 16. Кто и чем это решает на рынке
+
+- **Quantexa** — entity resolution + network analytics; на её платформе HSBC построил свою систему сетевой аналитики
+- **NICE Actimize** — suspicious activity monitoring, скоринг алертов и сегментация
+- **Hawk AI, Lucinity, Silent Eight, ComplyAdvantage** — типологические модели, автогенерация SAR-нарративов
+- **Neo4j + GDS, TigerGraph, Linkurious, Graphistry** — графовое хранение и визуализация
+
+**Важная оговорка:** вендорские кейс-цифры («−75% ложных срабатываний») получены на данных крупных банков с богатым KYC. На голом графе переводов без атрибутов они невоспроизводимы.
+
+**Промпт:**
+`Abstract vendor landscape: a horizontal row of stylized platform blocks of different heights connected by data pipelines, each block with a distinct abstract glyph, dark navy background, teal pipelines, amber highlights, flat isometric vector, no text or logos`
+
+---
+
+## Слайд 17. Графовые методы, которые индустрия реально применяет
+
+- **Структурные мотивы** — канонический словарь: fan-in, fan-out, gather-scatter, scatter-gather, cycle, bipartite, stack
+- **Pass-through detection** — сопоставление входящих и исходящих сумм в одношаговом соседстве: получил и быстро переслал
+- **Role discovery** — RolX, struc2vec, GraphWave: поиск ролей по структурному сходству
+- **Потоковые методы** — FlowScope, CubeFlow: моделируют не плотные подграфы, а потоки через цепочки-посредники
+- **Community detection** — Louvain, Leiden, Infomap
+
+**Что применимо на 2 248 узлах:** первые два. Эмбеддинги и GNN без меток дадут неустойчивый и необъяснимый результат.
+
+**Промпт:**
+`Eight canonical graph motifs displayed as a scientific plate: fan-in, fan-out, gather-scatter, scatter-gather, cycle, bipartite, stack, chain; arranged in a grid of glowing wireframe diagrams on dark navy, teal lines, flat technical vector, no text`
+
+---
+
+## Слайд 18. Наш ход: реконструкция потока, а не метрики
+
+Стандартные метрики посчитает каждый. Вопрос кейса звучит иначе: **чьи это деньги и куда они текут.**
+
+- **`taint_share`** — haircut-трассировка от 81 seed: какая доля оборота узла пришла от фигурантов. 799 узлов с долей выше 0,9
+- **`n_seeds_upstream`** — от скольких разных фигурантов деньги доходят до узла. 1 635 узлов достижимы от двух и более, максимум — 15
+- **Personalized PageRank с рестартом на seed** — вместо обычного PageRank, который на графе с 1 535 висячими узлами размазывает вес
+- **`external_funding_gap`** — разрыв «отдал минус получил», выявляющий точки вливания извне
+
+Эти четыре признака разделяют то, что степени не разделяют: узел с 99 получателями и taint 0,09 — внешний бизнес; узел с 61 получателем и taint 0,53 — распределитель денег группы.
+
+**Промпт:**
+`Dye-tracing visualization: amber colored liquid injected at several small source nodes spreads through a branching network of pipes, downstream nodes gradually tinted from strong amber to pale teal by dilution, flat vector, dark navy background, no text`
+
+---
+
+## Слайд 19. Валидация, когда проверять не с чем
+
+Ground truth нет — значит нужен его заменитель:
+
+- **Planted-pattern injection** — вставляем синтетические fan-in / fan-out / cycle на ~2% узлов и меряем, насколько высоко пайплайн их ранжирует
+- Метрики: **Precision@K и Recall@K** при K = 50 / 100 / 300
+- **Perturbation-тест** — устойчивость ранжирования при 0 / 10 / 20 / 30% шума
+- Пороги, меняющие решение: если больше 30% топ-узлов — это seed или граница обхода, ранжирование ловит артефакт, а не схему
+
+**Промпт:**
+`A network graph with several deliberately planted bright amber synthetic patterns hidden among teal organic structures, a magnifying lens sweeping across and highlighting them, measurement ticks along the lens edge, flat vector, dark navy, no text`
+
+---
+
+## Слайд 20. Архитектура решения и честные границы
+
+**Пайплайн:** данные → признаки узла → пороговые правила ролей с confidence → кластеризация → приоритизация → три выгрузки + интерактивная схема сети.
+Полный пересчёт — минуты, локально, без GPU.
+
+**Чего эти данные не позволяют — и мы это пишем прямо:**
+- дробление ниже 5 000 KZT невидимо
+- у 444 узлов 4-го колена конечность не подтверждена
+- у seed входящие занижены по построению
+- происхождение 63% оборота вне выборки
+
+**Все выводы — гипотезы для проверки, а не утверждения о виновности.**
+
+**Промпт:**
+`Clean end-to-end pipeline diagram in isometric flat vector: five connected stages represented as abstract geometric modules with data flowing left to right, final stage opening into a glowing network visualization, dark navy background, teal flow, amber final output, no text`
+
+---
+
+Если хотите, соберу это в реальный `.pptx` — с версткой, таблицами и местами под изображения.

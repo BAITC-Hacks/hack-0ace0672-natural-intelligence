@@ -407,6 +407,22 @@ function NodeCard({gid, api, onGo, onAsk, setBanner}) {
         <div className="kv"><span>медианная задержка вход→выход</span>
           <span>{dec(d.median_delay_days,1)} дн</span></div>}
 
+      {/* Структурные мотивы: показываем только те, что реально сработали, —
+          пустые строки «нет / нет / нет» карточку только засоряют. */}
+      {(d.cycle_time_ok || d.passthrough_matches > 0 || d.shared_receivers_max > 0) && <>
+        <h2>Структурные мотивы</h2>
+        {d.cycle_time_ok &&
+          <div className="kv"><span>возвратный цикл</span>
+            <span>деньги вернулись, хронология сходится</span></div>}
+        {d.passthrough_matches > 0 &&
+          <div className="kv"><span>сквозные платежи</span>
+            <span>{d.passthrough_matches}</span></div>}
+        {d.shared_receivers_max > 0 &&
+          <div className="kv"><span>общие получатели с другим узлом</span>
+            <span>{d.shared_receivers_max}
+              {d.shared_receivers_z != null && ` · z ${dec(d.shared_receivers_z, 1)}`}</span></div>}
+      </>}
+
       <div style={{display:'flex',gap:8,margin:'14px 0'}}>
         <button onClick={expand} disabled={busy}>{busy ? 'Гружу…' : 'Показать связи'}</button>
         <button className="ghost" onClick={() => onAsk(d.gid)}>Спросить ассистента</button>

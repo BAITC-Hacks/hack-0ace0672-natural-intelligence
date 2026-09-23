@@ -42,6 +42,10 @@ CARD_COLUMNS = [
     "depth", "is_seed", "in_deg", "out_deg", "in_kzt", "out_kzt",
     "transit_ratio", "net_flow", "external_funding_gap", "taint_share",
     "external_share", "median_delay_days", "n_seeds_upstream",
+    # структурные мотивы (src/motifs.py, владелец kuanyshs) — их может не быть
+    # в выгрузке, собранной старой версией пайплайна, отсюда проверка columns
+    "in_cycle_le6", "cycle_time_ok", "passthrough_matches",
+    "shared_receivers_max", "shared_receivers_z",
 ]
 
 

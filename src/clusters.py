@@ -8,6 +8,8 @@
 import networkx as nx
 import pandas as pd
 
+from src.text import plural as _plural
+
 MIN_COMPONENT_TO_SPLIT = 500
 
 
@@ -112,16 +114,3 @@ def _hypothesis(g: pd.DataFrame) -> str:
         parts.append("выраженных структурных признаков не выявлено")
     return "; ".join(parts)[:400]
 
-
-def _plural(n: int, one: str, few: str, many: str) -> str:
-    """Русское склонение числительных. Жюри читает эти строки глазами,
-    «14 известных фигуранта» выглядит как небрежность."""
-    n = abs(n) % 100
-    if 11 <= n <= 14:
-        return many
-    n %= 10
-    if n == 1:
-        return one
-    if 2 <= n <= 4:
-        return few
-    return many

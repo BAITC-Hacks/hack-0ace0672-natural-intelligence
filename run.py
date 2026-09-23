@@ -10,7 +10,7 @@ import argparse
 import time
 from pathlib import Path
 
-from src import clusters, features, motifs, priority, resilience, roles, schema
+from src import clusters, features, motifs, priority, resilience, roles, schema, text
 from src.io import DATA_DIR, OUT_DIR, build_graph, load, seeds
 from src.mock import write_graph_json
 
@@ -37,8 +37,8 @@ def main() -> None:
     # Аддитивный слой: четыре колонки и дописка в evidence. Роли и пороги не трогает.
     df, motif_pairs = motifs.compute(G, tx, df)
     df = motifs.augment_evidence(df)
-    print(f"мотивы: {int(df.cycle_time_ok.sum())} узлов в циклах с верной хронологией, "
-          f"{int((df.passthrough_matches > 0).sum())} узлов со сквозными платежами, "
+    print(f"мотивы: {text.nodes(int(df.cycle_time_ok.sum()))} в циклах с верной хронологией, "
+          f"{text.nodes(int((df.passthrough_matches > 0).sum()))} со сквозными платежами, "
           f"{len(motif_pairs)} пар в motifs.csv")
 
     df = clusters.assign(df, G)

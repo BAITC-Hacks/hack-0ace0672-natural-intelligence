@@ -20,6 +20,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from src.text import plural as _plural
+
 CYCLE_MAX_LEN = 4          # длиннее не берём: рост комбинаторный, отдача падает
 AMOUNT_TOLERANCE = 0.03    # 3% — банковская комиссия и округление укладываются
 DELAY_DAYS = 2             # окно «пришло и почти сразу ушло»
@@ -250,15 +252,3 @@ def augment_evidence(df: pd.DataFrame, limit: int = 200) -> pd.DataFrame:
     df["evidence"] = [(e + x)[:limit] for e, x in zip(df.evidence, extra)]
     return df
 
-
-def _plural(n: int, one: str, few: str, many: str) -> str:
-    """Русское склонение: «3 платежей прошли» читается как черновик."""
-    n = abs(n) % 100
-    if 11 <= n <= 14:
-        return many
-    n %= 10
-    if n == 1:
-        return one
-    if 2 <= n <= 4:
-        return few
-    return many

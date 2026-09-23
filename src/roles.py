@@ -8,6 +8,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from src.text import kzt as _kzt, payers, receivers
+
 # Пороги. Держим в одном месте, чтобы README их процитировал без раскопок по коду.
 #
 # Пороги заданы числами, а не перцентилями, потому что на этом графе перцентили
@@ -143,12 +145,12 @@ def _evidence(df: pd.DataFrame, G: nx.DiGraph) -> list[str]:
         m = f"{_kzt(r.in_kzt)} вх / {_kzt(r.out_kzt)} исх"
         if r.role == "consolidator":
             kept = 100 * (1 - r.out_kzt / r.in_kzt) if r.in_kzt > 0 else 100
-            s = (f"получил {_kzt(r.in_kzt)} от {r.in_deg} плательщиков, "
+            s = (f"получил {_kzt(r.in_kzt)} от {payers(r.in_deg)}, "
                  f"удержал {kept:.0f}%, HHI вх {r.hhi_in:.2f}")
         elif r.role == "distributor":
             ext = (f", из них {_kzt(r.external_funding_gap)} пришло извне выборки"
                    if r.external_funding_gap > 0 else "")
-            s = f"разослал {_kzt(r.out_kzt)} на {r.out_deg} получателей{ext}, HHI исх {r.hhi_out:.2f}"
+            s = f"разослал {_kzt(r.out_kzt)} на {receivers(r.out_deg)}{ext}, HHI исх {r.hhi_out:.2f}"
         elif r.role == "transit":
             d = "" if r.median_delay_days < 0 else f", задержка {r.median_delay_days:.0f} дн"
             s = f"прошло насквозь: {m}, transit_ratio {r.transit_ratio:.2f}{d}"
@@ -157,10 +159,10 @@ def _evidence(df: pd.DataFrame, G: nx.DiGraph) -> list[str]:
                  f"{r.out_deg} получателей, {m}")
         elif r.role == "terminal":
             s = (f"обход развернул узел, исходящих >=5000 KZT нет; "
-                 f"получил {_kzt(r.in_kzt)} от {r.in_deg} плательщиков")
+                 f"получил {_kzt(r.in_kzt)} от {payers(r.in_deg)}")
         elif r.role == "terminal_unknown":
             s = (f"4-е колено, обход оборван: конечность НЕ подтверждена; "
-                 f"получил {_kzt(r.in_kzt)} от {r.in_deg} плательщиков")
+                 f"получил {_kzt(r.in_kzt)} от {payers(r.in_deg)}")
         elif r.in_deg == 0 and r.out_deg == 0:
             s = "нет ни одного перевода >=5000 KZT в выгрузке — узел изолирован"
         else:
@@ -168,14 +170,3 @@ def _evidence(df: pd.DataFrame, G: nx.DiGraph) -> list[str]:
         out.append(s[:200])
     return out
 
-
-def _kzt(v: float) -> str:
-    """Суммы читаемо: миллионы для крупных, тысячи для мелких.
-
-    Единый формат «0.0 млн» превращал мелкие суммы в ноль и делал evidence бесполезным.
-    """
-    if v >= 1e6:
-        return f"{v/1e6:.1f} млн"
-    if v >= 1e3:
-        return f"{v/1e3:.0f} тыс"
-    return f"{v:.0f}"

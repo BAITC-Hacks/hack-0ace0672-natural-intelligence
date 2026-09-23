@@ -334,7 +334,23 @@ def _add_legend(path: Path, nodes: list[dict]) -> None:
 </script>
 """
     html = path.read_text(encoding="utf-8")
-    path.write_text(html.replace("<body>", "<body>" + block, 1), encoding="utf-8")
+    html = html.replace("<body>", "<body>" + block, 1)
+    path.write_text(_cut_cdn(html), encoding="utf-8")
+
+
+def _cut_cdn(html: str) -> str:
+    """Убирает из готового HTML теги, которые тянут ресурсы из сети.
+
+    `cdn_resources='in_line'` вшивает только vis-network, а Bootstrap шаблон pyvis
+    грузит с cdn.jsdelivr.net в любом случае. Офлайн это два мёртвых запроса,
+    а за файрволом с перехватом — ещё и подвисание на старте. Своё оформление
+    у нас есть, Bootstrap не нужен: вырезаем и получаем честно автономный файл.
+    """
+    import re
+
+    html = re.sub(r'\s*<link[^>]+href="https?://[^"]+"[^>]*>', "", html)
+    html = re.sub(r'\s*<script[^>]+src="https?://[^"]+"[^>]*>\s*</script>', "", html)
+    return html
 
 
 def main() -> None:

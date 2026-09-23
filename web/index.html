@@ -318,9 +318,16 @@ function makeApi(c) {
     has: gid => !c.getElementById(String(gid)).empty(),
     highlight, addSubgraph, clear,
     fit: () => { clear(); c.animate({fit:{padding:40}}, {duration:350}); },
+    // Возвращает, кого удалось подсветить, а кого на схеме нет:
+    // ответ ассистента часто ссылается на узлы вне отрисованных 500.
     cite: gids => {
       c.nodes().removeClass('cited');
-      gids.forEach(g => c.getElementById(String(g)).addClass('cited'));
+      const missing = [];
+      gids.forEach(g => {
+        const n = c.getElementById(String(g));
+        if (n.empty()) missing.push(String(g)); else n.addClass('cited');
+      });
+      return {shown: gids.length - missing.length, missing};
     },
     neighbours: gid => c.getElementById(String(gid)).neighborhood().nodes().length
   };
@@ -424,7 +431,7 @@ function NodeCard({gid, api, onGo, onAsk, setBanner}) {
 
 const HIST_KEY = 'graf-deneg-chat';
 
-function Chat({api, onGo, seed, onSeedUsed}) {
+function Chat({api, onGo, onCite, seed, onSeedUsed}) {
   const [q, setQ] = useState('');
   const [log, setLog] = useState(() => {
     try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; }
@@ -451,9 +458,7 @@ function Chat({api, onGo, seed, onSeedUsed}) {
       .then(r => r.json())
       .then(r => {
         setLog(l => [...l, {text:r.answer, mode:r.mode, gids:r.cited_gids || []}]);
-        if (r.cited_gids && r.cited_gids.length) {
-          api.current && api.current.cite(r.cited_gids);
-        }
+        if (r.cited_gids && r.cited_gids.length) onCite(r.cited_gids);
       })
       .catch(e => setLog(l => [...l, {text:'Ошибка запроса: ' + e, err:true}]))
       .finally(() => setBusy(false));
@@ -531,7 +536,8 @@ function App() {
       const r = api.current.highlight(g);
       setBanner(r && r.buried
         ? {text:`Узел ${g} найден. ${plural(r.buried, NODES)} из его окружения сейчас скрыты фильтром ролей.`,
-           action:'Показать все роли'}
+           action:'Показать все роли',
+           run: () => { setHidden(new Set()); setBanner(null); }}
         : null);
       return;
     }
@@ -559,6 +565,34 @@ function App() {
       setBanner({bad:true, text:'Не удалось загрузить окружение: ' + e});
     }
   }, [meta]);
+
+  // Ассистент часто ссылается на узлы вне отрисованных 500. Молча подсветить
+  // половину — значит соврать: честно говорим, сколько нашлось, и предлагаем
+  // дорисовать остальные одним нажатием.
+  const cite = useCallback(async (gids) => {
+    if (!api.current || !gids.length) return;
+    const r = api.current.cite(gids);
+    if (!r.missing.length) {
+      setBanner({text:`Ассистент сослался на ${plural(gids.length, NODES)} — все подсвечены на схеме.`});
+      return;
+    }
+    setBanner({
+      text:`Ассистент сослался на ${plural(gids.length, NODES)}: ${r.shown} на схеме, `
+         + `${r.missing.length} вне неё.`,
+      action:'Дорисовать остальные',
+      run: async () => {
+        setBanner({text:'Гружу окружение упомянутых узлов…'});
+        for (const g of r.missing) {
+          try {
+            const res = await fetch(`/api/subgraph/${g}?hops=1`);
+            if (res.ok) api.current.addSubgraph(await res.json());
+          } catch (e) { /* один неудачный узел не должен ронять остальные */ }
+        }
+        api.current.cite(gids);
+        setBanner({text:`Все ${plural(gids.length, NODES)} из ответа ассистента теперь на схеме.`});
+      },
+    });
+  }, []);
 
   const toggleRole = r => setHidden(h => {
     const n = new Set(h); n.has(r) ? n.delete(r) : n.add(r); return n;
@@ -659,7 +693,7 @@ function App() {
             {banner.text}
             {banner.action &&
               <button className="ghost" style={{marginLeft:10,padding:'4px 9px',fontSize:12}}
-                      onClick={() => { setHidden(new Set()); setBanner(null); }}>
+                      onClick={() => banner.run()}>
                 {banner.action}</button>}
             <span className="act" style={{marginLeft:10,cursor:'pointer',color:'var(--muted)'}}
                   onClick={() => setBanner(null)}>×</span>
@@ -687,7 +721,8 @@ function App() {
         </div>
         <div className="chat-wrap">
           <h2>Ассистент аналитика</h2>
-          <Chat api={api} onGo={go} seed={askSeed} onSeedUsed={() => setAskSeed(null)} />
+          <Chat api={api} onGo={go} onCite={cite}
+                seed={askSeed} onSeedUsed={() => setAskSeed(null)} />
         </div>
       </div>
     </>

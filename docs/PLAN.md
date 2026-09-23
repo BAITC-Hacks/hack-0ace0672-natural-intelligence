@@ -325,7 +325,7 @@ OpenAI-совместимый `/chat/completions`. Tool-calling проверен
 | Кто | Трек | Зона ответственности |
 |---|---|---|
 | **kuanyshs** | Ядро | `features.py`, `roles.py`, `priority.py`, три выгрузки, калибровка порогов |
-| **olzhasraiganiyev04-sketch** | Интерфейс | FastAPI, React + Cytoscape, поиск по gid, карточка узла, pyvis-fallback |
+| **BlackJoker00753** | Интерфейс | FastAPI, React + Cytoscape, поиск по gid, карточка узла, pyvis-fallback |
 | **narekdavtyan228-svg** | Агент + README | `agent.py` с tool-calling, README, схема решения, сценарий демо и его репетиция |
 
 Оба «не-ядерных» трека стартуют на mock-выгрузке и переключаются на реальную по готовности.

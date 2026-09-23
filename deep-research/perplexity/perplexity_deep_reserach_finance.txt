@@ -1,0 +1,614 @@
+Ниже — прикладной обзор по всем 10 разделам плюс запрошенные таблица и эталонная методика именно для вашего кейса (граф 2248 узлов, BFS по исходящим, порог 5000 тенге).  
+
+***
+
+## AML‑стек и место роли узла
+
+Современный AML‑/transaction monitoring‑стек в банках и финтехе почти всегда многослойный: ingestion → rule engine → ML‑скоринг → графовая аналитика → расследования/SAR. [bamboodt](https://www.bamboodt.com/next-generation-aml-transaction-monitoring-systems-real-time-risk-scoring-for-banks-and-fintechs/)
+
+Типовая архитектура:
+
+- **Data ingestion / identity resolution.** Сбор транзакций, KYC‑данных, устройств, географии, внешних рисков; плюс entity resolution (слияние записей в единые сущности) — это ключевая специализация Quantexa и похожих платформ. [quantexa](https://www.quantexa.com/resources/entity-resolution-guide/)
+- **Rule engine / scenario library.** Детерминированные правила и сценарии, покрывающие FATF/FinCEN‑типологии: пороги сумм, velocity‑паттерны, географические триггеры, списки санкций. [kychub](https://www.kychub.com/blog/aml-transaction-monitoring-2026)
+- **ML‑скоринг и графовый слой.** Модели аномалий и риска, графовая аналитика (entity‑centric network view, PageRank, communities, temporal motifs) поверх транзакционного графа. [ramlai](https://ramlai.com/index.php/ramlai/article/download/5/5)
+- **Alerting, case management, investigations.** Приоритизация алертов, кейс‑менеджмент, визуализация графа (Neo4j+Linkurious, Graphistry), подготовка SAR, обратная связь в моделирование. [linkurious](https://linkurious.com/neo4j/)
+
+**Задача “назначить роль узлу”** в отраслевом языке чаще описывается как:
+
+- *role discovery / structural role discovery* в литературе по графам (RolX, GraphWave, structural embeddings). [arxiv](https://www.arxiv.org/abs/1710.10321)
+- *entity / actor typology, behavioral segmentation* у вендоров (Quantexa “actor intelligence”, Lucinity “actor intelligence”, роль счетов в laundering network). [quantexa](https://www.quantexa.com/solutions/markets-aml/)
+
+Она обычно живёт в графовом слое и используется для:
+
+- интерпретации кластеров (какие узлы — core, какие — mules, какие — cash‑out),  
+- объяснения алертов расследователю (узел — “consolidator” в fan‑in схеме, “distributor” в smurfing‑фане),  
+- типологической разметки для правила‑библиотеки и обучения моделей. [remitso](https://www.remitso.com/blogs/aml-typologies-money-laundering-patterns)
+
+**Почему rules не вытеснены ML.**
+
+- Регуляторы требуют объяснимости, SR 11‑7 в США и аналогичные гайды прямо настаивают на прозрачных моделей и “effective challenge”; правила и простые скоркарды легче объяснить и валидировать. [go](https://go.ai/blog/sr-11-7-model-risk-management-ai)
+- Типичные TM‑системы дают 90–95% ложных срабатываний; ML используется скорее для снижения FPR и приоритизации, а не для полной замены правил. [paymentbrief](https://paymentbrief.com/articles/llms-aml-transaction-monitoring/)
+- Вендоры типа Hawk AI, ComplyAdvantage, Lucinity прямо продают “гибрид: rules+behavioral AI”, обещая снижение ложных алертов на 50–70%, а не полную замену rule engine. [lucinity](https://lucinity.com/transform-aml-with-ai)
+
+Ориентиры:
+
+- Исторические оценки: 90–95% TM‑алертов — false positive, по PwC‑бенчмарку и отраслевым обзорам. [fluxforce](https://www.fluxforce.ai/statistics/false-positive-rates-transaction-monitoring)
+- Конверсия алертов в SAR: ComplyAdvantage и др. считают <2% конверсии признаком завышенного FPR. [complyadvantage](https://complyadvantage.com/vendor/top-aml-data-vendors/)
+
+***
+
+## Типологии отмывания и отображение на роли
+
+### Канонические типологии
+
+На базе FATF/FinCEN/Wolfsberg/Egmont и отраслевых обзоров часто выделяют: [apgml](https://www.apgml.org/typologies/introduction-apg-typologies)
+
+- **Structuring / smurfing.** Много мелких транзакций ниже порога отчётности, часто через нескольких “smurfs”; fan‑in в один счёт и/или fan‑out к множеству получателей. [ondato](https://ondato.com/blog/structuring-aml/)
+- **Money mule networks.** Сети счетов‑мулов: много входящих мелких кредитов → один или немного крупных дебетов дальше по цепочке. [linkedin](https://www.linkedin.com/posts/abdulroshana_aml-transactionmonitoring-financialcrime-activity-7425534540896575488-6A2D)
+- **Funnel accounts.** Один счёт получает множественные депозиты/переводы из разных геолокаций, затем быстро “опустошается” переводами/снятиями. [amlreadyacademy](https://amlreadyacademy.com/learn/cams/core-typologies)
+- **Layering.** Серии переводов между связанными счетами и юрлицами, через разные продукты/юрисдикции, для разрыва связи с источником. [creodata](https://www.creodata.com/blog/money-laundering-typologies/)
+- **Round‑tripping.** Круговые потоки: средства уходят в офшор/иное юрлицо и возвращаются в исходную юрисдикцию под видом инвестиций, займов, trade‑доходов. [netbankaudit](https://www.netbankaudit.com/resources/circular-transactions-funnel-accounts)
+- **Fan‑in / fan‑out паттерны.** Множество источников → один агрегатор (fan‑in) и один источник → множество получателей (fan‑out). [remitso](https://www.remitso.com/blogs/aml-typologies-money-laundering-patterns)
+- **Pass‑through / nested accounts.** Счета, через которые средства просто “протекают” (баланс ≈0), часто nested под кор‑счётами в другом банке. [remitso](https://www.remitso.com/blogs/aml-typologies-money-laundering-patterns)
+- **Cash‑out points.** Узлы, где деньги выходят в наличность/крипто/товары: банкоматы, обменники, high‑risk merchants, cash‑intensive бизнес. [apgml](https://www.apgml.org/typologies/introduction-apg-typologies)
+
+### Топологические сигнатуры
+
+Кратко по топологии графа платежей: [isi](https://www.isi.it/wp-content/uploads/2024/01/smurf-based-anti-money-laundering-in-time-evolving-transaction-networks_Starnini2021_Chapter_Smurf-BasedAnti-moneyLaunderin.pdf)
+
+- **Structuring/smurfing.**  
+  - Подграф типа “звезда” (много исходящих от смурфов к funnel/consolidator) или “веер” с множеством повторяемых мелких переводов.  
+  - Высокий счёт транзакций, суммы сосредоточены в узком диапазоне около порогов (например, прямо ниже отчётного порога). [ondato](https://ondato.com/blog/structuring-aml/)
+  - Высокая burstiness: пачки транзакций в коротких окнах времени. [isi](https://www.isi.it/wp-content/uploads/2024/01/smurf-based-anti-money-laundering-in-time-evolving-transaction-networks_Starnini2021_Chapter_Smurf-BasedAnti-moneyLaunderin.pdf)
+
+- **Mule/funnel accounts.**  
+  - Fan‑in от многих источников и fan‑out к одному/нескольким узлам дальше.  
+  - Высокая входящая степень и суммарный входящий оборот, затем крупные исходящие “сбросы”. [amlreadyacademy](https://amlreadyacademy.com/learn/cams/core-typologies)
+
+- **Layering.**  
+  - Путь/цепочка узлов, часто с циклами и многошаговыми переводами; увеличенная средняя длина пути от источника до cash‑out. [ramlai](https://ramlai.com/index.php/ramlai/article/download/5/5)
+  - Повторное использование промежуточных узлов, мотивы “path‑motifs” и циклы. [arxiv](https://arxiv.org/html/2609.12175v1)
+
+- **Round‑tripping.**  
+  - Наличие цикла, в котором источник и конечный получатель в одной юрисдикции/группе; сумма по кругу сопоставима с исходной. [fluxforce](https://www.fluxforce.ai/typologies/round-tripping)
+
+- **Pass‑through / nested.**  
+  - Узлы с сильным балансом вход/выход (ratio ≈1), малым остатком, высокой betweenness centrality, но без сильной концентрации по контрагентам. [ramlai](https://ramlai.com/index.php/ramlai/article/download/5/5)
+
+- **Cash‑out points.**  
+  - Высокий исходящий оборот к терминальным узлам (ATM, merchants), часто однонаправленный поток (fan‑out), возможны круглые суммы и специфические MCC/каналы. [apgml](https://www.apgml.org/typologies/introduction-apg-typologies)
+
+### Отображение типологий на ваши роли
+
+Таксономия: **consolidator, transit, distributor, terminal, coordinator, peripheral.**  
+
+Естественное сопоставление (количественные признаки — обсуждаются дальше, здесь — интуитивно):
+
+- **Consolidator.**  
+  - Центр fan‑in или funnel: высокая входящая степень, высокий входящий оборот, несколько крупных исходящих переводов. [netbankaudit](https://www.netbankaudit.com/resources/circular-transactions-funnel-accounts)
+  - В типологиях: funnel account aggregator, конечная точка structuring (агрегирующий счёт), round‑tripping home node. [fluxforce](https://www.fluxforce.ai/typologies/round-tripping)
+
+- **Distributor.**  
+  - Центр fan‑out: высокая исходящая степень и оборот, диверсификация контрагентов, возможно регулярные выплаты (зарплаты, пособия) — для легитимных аналогов. [remitso](https://www.remitso.com/blogs/aml-typologies-money-laundering-patterns)
+  - В типологиях: дистрибьюция средств к мнимым поставщикам, мулы‑дистрибьюторы, cash‑out network. [apgml](https://www.apgml.org/typologies/introduction-apg-typologies)
+
+- **Transit.**  
+  - Узлы pass‑through: баланс вход/выход близок к 1, средняя степень, высокая betweenness, краткие задержки средств. [ramlai](https://ramlai.com/index.php/ramlai/article/download/5/5)
+  - В типологиях: layering chains, nested accounts, межбанковские прокладки. [creodata](https://www.creodata.com/blog/money-laundering-typologies/)
+
+- **Terminal.**  
+  - Узлы, где поток “заканчивается” в наблюдаемом графе: низкая исходящая степень, значительный чистый inflow, или single‑edge выход за границу сета. [netbankaudit](https://www.netbankaudit.com/resources/circular-transactions-funnel-accounts)
+  - В типологиях: cash‑out points, конечные получатели в integration стадии. [fincen](https://www.fincen.gov/financial-action-task-force-money-laundering-fatf)
+
+- **Coordinator.**  
+  - Узлы с умеренными объёмами, но высокой степенью связности между группами: соединяют несколько подграфов/кластеров, имеют связи с другими ключевыми узлами (consolidator/distributor), часто “контролирующие” счета/юридические лица. [arxiv](https://www.arxiv.org/abs/1710.10321)
+
+- **Peripheral.**  
+  - Узлы с малой степенью и небольшими оборотами; одиночные эпизодические связи, “leaf” в дереве. [publichealth.columbia](https://www.publichealth.columbia.edu/research/population-health-methods/social-network-analysis)
+
+### Размытые границы и подход индустрии
+
+Исследования по role discovery показывают, что узлы часто имеют **множественные роли** (mixed membership), а структурная похожесть сильно зависит от масштаба и выбора признаков. [theses.hal](https://theses.hal.science/tel-03690033/file/Galland_2020_These.pdf)
+
+Практика:
+
+- Использование **soft‑ролей**: узлу присваивается распределение \(p(\text{role} | \text{features})\), а не одна жёсткая метка; RolX и похожие методы прямо выдают смешанное членство в ролях. [osti](https://www.osti.gov/servlets/purl/1113378)  
+- Переопределение роли по контексту кейса: один и тот же счёт может быть consolidator в одной схеме и peripheral в другой (по другому временно‑топологическому контексту). [appliednetsci.springeropen](https://appliednetsci.springeropen.com/articles/10.1007/s41109-022-00509-4)
+- Для прод‑AML обычно выбирают **одну “основную” роль для интерфейса** (упрощённое объяснение расследователю), но хранят техническое распределение и используемые признаки в модели. [link.springer](https://link.springer.com/article/10.1007/s44163-026-00944-7)
+
+В вашем кейсе придётся делать именно так: расчёт вероятностного распределения и выбор доминирующей роли, с явным указанием уверенности и “пограничных” случаев.
+
+***
+
+## Смещение выборочного графа: snowball‑sampling и boundary specification
+
+Ваш граф — типичный **snowball / BFS‑sample**: 81 seed, обход только по исходящим, до глубины 4, с цензурированием транзакций ниже 5000 тенге. Это классический **boundary specification problem**: аналитик работает не с полной сети, а с её выборочной оболочкой. [link.springer](https://link.springer.com/article/10.1007/s10109-020-00340-4)
+
+Исследования по snowball sampling и RDS подчёркивают несколько ключевых искажений: [pmc.ncbi.nlm.nih](https://pmc.ncbi.nlm.nih.gov/articles/PMC3250988/)
+
+- **Seed bias.** Структура сети вокруг выбранных seed переоценена, другие компоненты недопредставлены — узлы с большими “социальными” степенями попадают чаще. [tgmresearch](https://tgmresearch.com/snowball-sampling.html)
+- **Homophily.** Цепочки обхода остаются в “похожих” сегментах (по типам клиентов/продуктам), что искажает распределения признаков и центральностей. [casrai](https://casrai.org/guides/snowball-sampling)
+- **Искажение центральностей.** Мера центральности (PageRank, betweenness) на выборочном графе может быть надёжной только при очень высоком охвате (>80% узлов и рёбер), чего у вас нет; многие работы прямо указывают, что при <20% coverage центральности ненадёжны. [link.springer](https://link.springer.com/article/10.1007/s10109-020-00340-4)
+
+Дополнительные эффекты в вашем дизайне:
+
+- **Односторонняя выгрузка (только исходящие).** Входящие потоки seed‑клиентов из внешнего мира не видны; это ломает баланс вход/выход и любые интерпретации “consolidator vs distributor” на абсолютных величинах. [en.wikipedia](https://en.wikipedia.org/wiki/Snowball_sampling)
+- **Порог 5000 тенге.** Цензурирование по сумме: отсутствующие мелкие транзакции искажают распределение сумм, velocity и structuring‑паттерны — многие smurfing‑схемы специально работают ниже порогов. [ondato](https://ondato.com/blog/structuring-aml/)
+- **Граница обхода на 4‑м колене.** 444 узла “терминальны” искусственно: они могли бы быть transit/distributor дальше, но вы обрубили исходящие. [ajbr.co](https://ajbr.co.nz/ajbr/ajbr250186.pdf)
+
+Практические поправки, которые используют в AML‑граф‑аналитике: [tigergraph](https://www.tigergraph.com/blog/time-aware-graphs-solving-temporal-risk-in-aml/)
+
+- **Разделение ядра и границы.**  
+  - Вводится признак “глубина от seed” и флаг “boundary node”; метрики роли и аномалии валидно интерпретируют только для внутреннего ядра (скажем, колена 1–3), а четвёртое — рассматривают как “отсечённую границу”.  
+- **Нормировка на глубину.**  
+  - Простые нормировки вроде “сравнивать degree/оборот внутри одного кольца глубины” уменьшает bias от расширения snowball‑оболочки. [ajbr.co](https://ajbr.co.nz/ajbr/ajbr250186.pdf)
+- **Ограничение интерпретаций.**  
+  - Запрет делать выводы о *глобальной влиянии* узла (например, “ключевой координатор всей сети банка”) — только в рамках наблюдаемой индукции от seed.  
+- **Расчёт признаков на индуцированных подграфах.**  
+  - Например, отдельный граф “seed + их 1–2 колена”, где центральности и role‑discovery более значимы, и отдельный граф для всей выборки для кластеризации. [sciencedirect](https://www.sciencedirect.com/science/article/pii/S2405918824000321)
+- **Бутстрап по seed.**  
+  - В исследованиях используют многократные выборки разных наборов seed, чтобы оценить чувствительность распределений; у вас один срез, но идеологически оценку уверенности по ролям стоит уменьшать для узлов, сильно зависящих от конкретного seed. [pmc.ncbi.nlm.nih](https://pmc.ncbi.nlm.nih.gov/articles/PMC3250988/)
+
+Неформальное правило индустрии: **на таком графе можно делать “локальные” выводы (формат кейса), но нельзя — системные выводы про весь банк/юрисдикцию.** [scribd](https://www.scribd.com/document/851533086/Detecting-Hawala-network-for-money-launderi-2024-The-Journal-of-Finance-and)
+
+***
+
+## Признаки на графе платежей
+
+Практика AML обычно даёт два слоя признаков: агрегаты по счёту и явные графовые метрики. [ijsrst](https://ijsrst.com/IJSRST2302569)
+
+### Агрегированные транзакционные признаки
+
+Частый прод‑набор (опираясь на обзоры и реальные бенчмарки): [financialcrime](https://financialcrime.lu/assets/pdfs/research/2026/01/20260130%20EN%20Hybrid%20deep%20learning%20for%20anti-money%20laundering_%5BMD5_587E9987D42307FE0708D93193BA4649%5D.pdf)
+
+- **Степени и обороты.**  
+  - in/out‑degree, количество контрагентов, суммарный входящий/исходящий оборот, средние и медианные суммы, доля крупных транзакций.  
+- **Ratio выход/вход.**  
+  - \(\frac{\text{out volume}}{\text{in volume}}\), \(\frac{\text{out count}}{\text{in count}}\) — proxy “distributor vs consolidator”. [ijsrst](https://ijsrst.com/IJSRST2302569)
+- **Скорость оборачиваемости.**  
+  - Время пребывания средств на счёте (разница между входом и последующим выходом); velocity индикаторы. [isi](https://www.isi.it/wp-content/uploads/2024/01/smurf-based-anti-money-laundering-in-time-evolving-transaction-networks_Starnini2021_Chapter_Smurf-BasedAnti-moneyLaunderin.pdf)
+- **Концентрация контрагентов.**  
+  - Индекс Херфиндаля, доля top‑N контрагентов по объёму — высокий HHI указывает на funnel/микросетевые паттерны. [ijsrst](https://ijsrst.com/IJSRST2302569)
+- **Разброс сумм и округлость.**  
+  - Дисперсия сумм, доля “круглых” значений, доля сумм близких к порогам отчётности; structuring и tax evasion паттерны. [backend.mhpc.sissa](https://backend.mhpc.sissa.it/sites/default/files/2023-09/Yousfi_Tesi.pdf)
+- **Регулярность интервалов и burstiness.**  
+  - Интервалы между платежами, коэффициенты burstiness (степень кластеризации событий во времени), temporal‑motifs. [arxiv](https://arxiv.org/html/2609.12175v1)
+
+Выборочно, что даёт сигнал:
+
+- Velocity и баланс вход/выход крайне полезны для отбора transit/pass‑through и “быстрой” structuring. [ondato](https://ondato.com/blog/structuring-aml/)
+- Концентрация контрагентов и распределение сумм — сильные признаки для funnel и round‑tripping. [kaggle](https://www.kaggle.com/datasets/berkanoztas/synthetic-transaction-monitoring-dataset-aml)
+- Простые частоты и суммы сами по себе малоинформативны без сочетания с сетью и контекстом — часто декоративны. [arxiv](https://arxiv.org/html/2405.19383v3)
+
+### Графовые признаки
+
+Сводка по используемым в AML и графовых задачах признакам: [infolab.stanford](http://infolab.stanford.edu/~ullman/mmds/ch5.pdf)
+
+- **PageRank, personalized PageRank.**  
+  - Мера “влияния” узла в сети денежных потоков; полезно для выявления central hubs, но чувствительно к boundary‑specification. [snap.stanford](https://snap.stanford.edu/class/cs224w-readings/borodin05pagerank.pdf)
+- **HITS (hubs/authorities).**  
+  - Естественное отображение hub ↔ distributor, authority ↔ consolidator в фан‑ин/фан‑аут сетях. [cis.lmu](https://www.cis.lmu.de/~hs/teach/14s/ir/pdf/21link.pdf)
+- **Betweenness centrality (на взвешенном направленном графе).**  
+  - Узлы, через которые проходит максимальный поток путей; хорошие кандидаты на transit/coordinator. [nature](https://www.nature.com/articles/s41598-024-58624-4)
+- **K‑core, k‑truss.**  
+  - “Внутреннее ядро” сети, устойчивые группы узлов с высокой взаимной связностью; полезны для нахождения организованных сетей, но сами по себе не дают типологию. [nature](https://www.nature.com/articles/s41598-024-58624-4)
+- **Motifs и graphlets, temporal motifs.**  
+  - Счёт мотивов (chains, triangles, cycles) и их временная структура; используются для детекции smurfing и layering. [arxiv](https://arxiv.org/html/2609.12175v1)
+- **Циклы и time‑respecting paths.**  
+  - Цепочки переводов, которые уважают временный порядок; важны для tracing и оценки layering глубины. [arxiv](https://arxiv.org/html/2609.12175v1)
+- **Max‑flow/min‑cut.**  
+  - Меры “узких горлышек” и потенциальных координаторов, через которых проходит большой поток. [ramlai](https://ramlai.com/index.php/ramlai/article/download/5/5)
+
+Многие вендоры признают, что сложные графовые признаки часто **декоративны** без жёсткой связи с типологиями: они красиво смотрятся в презентации, но мало добавляют к детекции поверх хорошо подобранных агрегатов. [arxiv](https://arxiv.org/html/2405.19383v3)
+
+### Трассировка средств и методы из криптофорензики
+
+В криптовалютной аналитике Chainalysis, Elliptic и др. используют **taint‑анализ** (poison, haircut, FIFO) и граф трассировки средств. [spark](https://www.spark.money/glossary/taint-analysis)
+
+- **Poison:** любое соприкосновение с “грязными” средствами делает все выходы 100% tainted. [spark](https://www.spark.money/glossary/taint-analysis)
+- **Haircut:** распределение taint пропорционально доле загрязнённых входов — основной метод у блокчейн‑аналитиков. [spark](https://www.spark.money/glossary/taint-analysis)
+- **FIFO:** наделение taint по принципу “первый вошёл — первый вышел”. [arxiv](https://arxiv.org/pdf/2207.07315.pdf)
+
+Применимость к банковским переводам:
+
+- Методы taint‑трейсинга дают сильный сигнал, если есть “якорные” подозрительные узлы (санкции, уже расследованные дела); но у вас меток нет, так что это пригодно только для **гипотетического анализа “если seed подозрителен, к кому тянется taint”**. [valken](https://valken.legal/insights/chainalysis-trm-labs-elliptic-blockchain-analysis)
+- В банковских системах приходится учитывать многократные счета, коррсчета, внутрисистемные клиринги — граф сложнее, чем UTXO, но сама идея пропорционального распределения риска по пути применима. [s3.ap-southeast-1.wasabisys](https://s3.ap-southeast-1.wasabisys.com/ijmanuscripts/manuscripts/v11i5/V11I5-1212.pdf)
+
+***
+
+## Алгоритмы: роли и сообщества
+
+### Role discovery
+
+Исследования по role discovery предлагают несколько классов методов: [web.eecs.umich](https://web.eecs.umich.edu/~dkoutra/papers/12-kdd-recursiverole.pdf)
+
+- **Feature‑based (RolX / GLRD).**  
+  - RolX: извлечение базовых структурных признаков (degree, clustering, betweenness), их группировка и автоматический выбор числа ролей; узлам присваиваются смешанные роли. [web.eecs.umich](https://web.eecs.umich.edu/~dkoutra/tut/sdm14_part1a.pdf)
+- **Structural embeddings (struc2vec, GraphWave).**  
+  - GraphWave: использует диффузию волновых функций для кодирования локальной структуры узла; узлы с похожими “структурными ролями” имеют похожие эмбеддинги, даже если далеко в графе. [markheimann.github](https://markheimann.github.io/papers/20Thesis.pdf)
+- **SBM / DC‑SBM (stochastic block models).**  
+  - Моделируют сеть как смесь “блоков” (ролей), где вероятность связи зависит от ролей участников; DC‑SBM учитывает разную степень узлов. Это принципиально “ролевой” подход, в отличие от чисто плотностной кластеризации. [www-cs.stanford](https://www-cs.stanford.edu/people/jure/pubs/graphrepresentation-ieee17.pdf)
+
+Практика AML: такие методы используются ограниченно (скорее в R&D и исследовательских проектах) из‑за сложности интерпретации и требований регуляторов; в проде они чаще служат источником **feature‑engineering** (эмбеддинги → признаки для более простых моделей). [link.springer](https://link.springer.com/article/10.1007/s44163-026-00944-7)
+
+### Community detection на направленных взвешенных графах
+
+Индустрия постепенно уходит от простого Louvain на неориентированном графе к более подходящим методам: [dl.acm](https://dl.acm.org/doi/10.1145/3779648)
+
+- **Модульностные методы (Louvain, Leiden).**  
+  - Louvain оптимизирует модульность, но страдает от resolution limit и может давать плохо связанные сообщества; Leiden улучшает связность и качество, но всё равно ориентирован на **структурную плотность**, не на потоки. [theses.liacs](https://theses.liacs.nl/pdf/2017-2018-QatoKristi.pdf)
+- **Infomap / map equation.**  
+  - Infomap минимизирует длину описания случайного блуждания по сети; он естественен для платежных графов, где важны **потоки средств**: сообщества определяются как области, где “деньги долго гуляют внутри”. [metricgate](https://metricgate.com/docs/infomap-community/)
+- **Ошибка Louvain на неориентированной проекции.**  
+  - Приведение направленного графа к неориентированному теряет асимметрию потоков (fan‑in vs fan‑out), ломает смысл hub/authority и smurfing‑структур; это распространённая ошибка в прикладных AML‑проектах. [statworx](https://www.statworx.com/en/content-hub/blog/community-detection-with-louvain-and-infomap)
+
+Для вашего кейса Infomap на исходном направленном графе с весами по сумме/количеству транзакций — лучший кандидат для **кластеризации по потокам**, а не только по структурной плотности.
+
+### GNN и графовые anomaly‑detectors
+
+Существуют многочисленные GNN‑подходы к финансовому мошенничеству и AML: [scholarworks.sjsu](https://scholarworks.sjsu.edu/etd_projects/1797/)
+
+- Модели типа Temporal‑GCN, Inspection‑L и др. показывали высокие метрики (пример: точность ~97.8%, F1 ~80.6% на Bitcoin‑графе). [d-nb](https://d-nb.info/1265069298/34)
+- Сложные ансамбли (DOMINANT, CoLA, AnomalyDAE, GAT → meta‑learner XGBoost) дают улучшение AUC‑ROC на DGraph‑Fin и других финансовых графах. [scholarworks.sjsu](https://scholarworks.sjsu.edu/etd_projects/1797/)
+
+Но важные ограничения:
+
+- Многие открытые датасеты (Elliptic/ Elliptic++) структурно отличаются от реальных банковских графов; Network Analytics for AML показывает, что простые методы на Elliptic дают AUC‑ROC <0.5, а инверсия скоров может работать лучше. [arxiv](https://arxiv.org/html/2405.19383v3)
+- GNN требуют либо лейблов, либо хотя бы устойчивых proxy‑таргетов (например, эвристические метки на injected typologies, как в AMLSim и SAML‑D). [github](https://github.com/IBM/AMLSim/)
+
+**Честный ответ для вашего размера (2248 узлов) и нулевой разметки:**
+
+- При таком масштабе аккуратная инженерия признаков + rule‑based/скоро‑подходы (unsupervised anomaly detection + типологические правила) **чаще выигрывают по explainability и затратам**, а по качеству сравнима или лучше, чем “голые” GNN‑модели без меток. [ijsrst](https://ijsrst.com/home/issue/view/article.php?id=IJSRST2302569)
+- GNN и role‑embeddings имеет смысл как R&D‑слой для улучшения признаков (эмбеддинги → фичи для простых моделей), но не как основной production‑детектор в условиях вашей задачи. [link.springer](https://link.springer.com/article/10.1007/s44163-026-00944-7)
+
+***
+
+## Работа без разметки
+
+AML‑команды в реальных банках часто стартуют с **почти нулевыми метками**: SAR‑история есть, но она крайне разреженная и biased. Для построения скорингов без меток применяют: [zenodo](https://zenodo.org/records/17509031)
+
+- **Ансамбли безнадзорных детекторов.**  
+  - Isolation Forest для outlier‑points, [skemman](https://skemman.is/bitstream/1946/44727/1/Unsupervised_Anomaly_Detection_in_Financial_Transactions.pdf)
+  - Local Outlier Factor (LOF), One‑Class SVM, Gaussian Mixture Models,  
+  - Autoencoder‑архитектуры на табличных или графовых признаках. [ijsrst](https://ijsrst.com/home/issue/view/article.php?id=IJSRST2302569)
+- **Типологические скоринги.**  
+  - Для каждой типологии (structuring, funnel, layering, round‑tripping) реализуются правила с весами: количество совпавших признаков → балл подозрительности. [linkedin](https://www.linkedin.com/posts/abdulroshana_aml-transactionmonitoring-financialcrime-activity-7425534540896575488-6A2D)
+- **Расстояние до “нормального профиля”.**  
+  - Кластеризация нормальных профилей и измерение distance до ближайшего кластера (например, через Mahalanobis distance). [zenodo](https://zenodo.org/records/17509031)
+
+Агрегация скоров:
+
+- На практике строят **meta‑скор** как взвешенную комбинацию разных источников: anomaly‑score, типологический скор, кластерная аномальность, графовые центральности. [s3.ap-southeast-1.wasabisys](https://s3.ap-southeast-1.wasabisys.com/ijmanuscripts/manuscripts/v11i5/V11I5-1212.pdf)
+- Весовые коэффициенты калибруются на основе *малой экспертной разметки* (несколько десятков/сотен кейсов) и инъекции синтетических паттернов (AMLSim, PaySim, SAML‑D). [github](https://github.com/AlonaDrok/Anti-Money-Laundering-Transaction-Detection---CAPSTONE-PROJECT-2026)
+
+Запуск системы “с нуля”:
+
+- **Инъекция синтетических типологий и симуляторы.**  
+  - AMLSim, PaySim, IBM AML‑transactions дают транзакционные графы с встроенными паттернами; ими обучают детекторы и проверяют sensitivity. [knowledge.iadb](https://knowledge.iadb.org/en/knowledge-resources/code-development/open-source-solution/amlsim)
+- **Экспертная разметка малого сета + active learning.**  
+  - Аналитики размечают top‑k аномальных узлов, дальше система предлагает кандидатов для разметки (active learning). [s3.ap-southeast-1.wasabisys](https://s3.ap-southeast-1.wasabisys.com/ijmanuscripts/manuscripts/v11i5/V11I5-1212.pdf)
+- **Обучение на исторических SAR.**  
+  - Даже при небольшом количестве SAR можно использовать их как positive‑examples и строить ранжирование по similarity. [sas](https://www.sas.com/content/dam/sasdam/documents/20250124/how-ai-and-machine-learning-are-redefining-anti-money-laundering.pdf)
+
+Оценка качества без “истины”:
+
+- **Precision@k.**  
+  - Насколько часто top‑k алертов по скору приводят к “принятию действия” (эскалация, SAR).  
+- **Recall на инъецированных паттернах.**  
+  - С какой долей находят синтетически внедрённые типологии (из AMLSim/SAML‑D).. [scribd](https://www.scribd.com/document/851533086/Detecting-Hawala-network-for-money-launderi-2024-The-Journal-of-Finance-and)
+- **Доля алертов → SAR.**  
+  - Конверсия алертов в SAR (чаще всего <1–5% и выше — признак пере‑ или недо‑чувствительности). [paymentbrief](https://paymentbrief.com/articles/llms-aml-transaction-monitoring/)
+- **Операционные метрики.**  
+  - Время аналитика на алерт, доля алертов, закрытых без действия, время цикла SAR. [databricks](https://www.databricks.com/blog/modern-bsaaml-compliance-databricks)
+
+***
+
+## Объяснимость и регуляторные требования
+
+Регуляторы (Fed/OCC/FDIC через SR 11‑7 и обновлённый SR 26‑2, ЕС через AI Act, национальные надзорные органы) требуют: [signzy](https://www.signzy.com/regulation-glossary/model-risk-management-SR-11-7)
+
+- Чётко документированных моделей, данных и ограничений.  
+- Независимой валидации (conceptual soundness, outcomes analysis, ongoing monitoring). [go](https://go.ai/blog/sr-11-7-model-risk-management-ai)
+- Возможности **“effective challenge”** — люди должны понимать, почему модель поставила такой риск‑скор; для сложных моделей требуется XAI (SHAP, LIME). [risktemplate](https://risktemplate.com/blog/2026-03-30-ai-explainability-requirements-financial-services/)
+
+В AML это конкретно проявляется:
+
+- **Reason codes для алерта.**  
+  - Rule‑based решения уже содержат reason code (“>10 транзакций ниже порога за 7 дней”); для моделей требуются аналогичные объяснения на основе признаков (например, top‑N features SHAP value). [risktemplate](https://risktemplate.com/blog/2026-03-30-ai-explainability-requirements-financial-services/)
+- **SHAP на графовых фичах.**  
+  - SHAP используется для оценки вклада каждой фичи в скор; в AML‑работах отмечают, что это *атрибуция корреляций, а не причинности*, но достаточно для объяснения. [link.springer](https://link.springer.com/article/10.1007/s44163-026-00944-7)
+- **Подграф‑улика.**  
+  - В расследованиях стандарт — показывать подграф, иллюстрирующий структуру схемы (fan‑in/fan‑out, цепочка layering), плюс числа: degree, обороты, интервалы. [neo4j](https://neo4j.com/blog/financial-services/detect-investigate-financial-crime-patterns-linkurious/)
+- **Шаблоны нарративов SAR.**  
+  - LLM‑генераторы SAR используют структурированные “фермы” причин: типология → ключевые фичи → краткий нарратив. [arxiv](https://arxiv.org/abs/2509.08380)
+
+Почему часто выбирают менее точные, но объяснимые модели:
+
+- SR 11‑7 и CFPB‑guidance по explainability фактически запрещают использовать “чёрные ящики”, если нельзя объяснить adverse action или высокий риск. [go](https://go.ai/blog/sr-11-7-model-risk-management-ai)
+- Исследования по AML‑детекции показывают, что Random Forest/градиентный бустинг дают хороший баланс F1 и интерпретируемости, но глубокие нейросети сложно объяснить регулятору. [academic.oup](https://academic.oup.com/comjnl/article/69/1/192/8266854?guestAccessKey=)
+
+**Минимальный набор чисел, который обычно “убеждает” аналитика:**
+
+- Степени (in/out) и обороты узла.  
+- Ratio вход/выход по сумме и количеству.  
+- Top‑контрагенты (их доля в обороте, число связей).  
+- Простые временные метрики (кол‑во транзакций в последних N днях, интервалы). [neo4j](https://neo4j.com/blog/financial-services/detect-investigate-financial-crime-patterns-linkurious/)
+
+***
+
+## LLM и агентные подходы в расследованиях
+
+Реально применяемые паттерны LLM в AML: [ijeasm](https://ijeasm.com/PublishedPaper/6Vol/Issue8/2025IJEASM820253224-69ee1f22-940a-4580-918b-eecabf59b2eb5734.pdf)
+
+- **Автогенерация SAR‑нарративов.**  
+  - LLM, обученный на шаблонах SAR, превращает структурированные данные кейса (транзакции, связи, типология) в текст отчёта, который затем проверяет человек. [sas](https://www.sas.com/content/dam/sasdam/documents/20250124/how-ai-and-machine-learning-are-redefining-anti-money-laundering.pdf)
+- **Суммаризация кейса и triage.**  
+  - LLM‑агент собирает ключевые факты по алерту (history клиента, контрагенты, негативные новости) и делает краткий summary + рекомендации. [paymentbrief](https://paymentbrief.com/articles/llms-aml-transaction-monitoring/)
+- **Агенты‑исследователи.**  
+  - Специализированные агенты, как в Co‑Investigator AI: crime‑type detection, external intelligence gathering (adverse media, санкции), compliance validation; человек остаётся в контуре. [arxiv](https://arxiv.org/abs/2509.08380)
+- **LLM‑copilot для аналитика.**  
+  - Подсказки по типологиям, авто‑формирование гипотез (“данный кластер похож на layering с funnel account”) на основе структурированных признаков. [ijeasm](https://ijeasm.com/PublishedPaper/6Vol/Issue8/2025IJEASM820253224-69ee1f22-940a-4580-918b-eecabf59b2eb5734.pdf)
+
+Где это работает vs маркетинг:
+
+- Работает: **SAR drafting, case summarization, triage**, особенно при больших объёмах алертов; есть реальные отчёты о сокращении времени на SAR и расследование на 50–70%. [databricks](https://www.databricks.com/blog/modern-bsaaml-compliance-databricks)
+- Маркетинг: **“LLM‑детекция подозрительных транзакций”** без строгих правил — регуляторы крайне скептичны, требуется формальное MRM и доказуемые метрики. [finrep](https://www.finrep.ai/blog/ai-model-risk-management-in-finance-the-2026-practitioners-framework)
+
+Риски и контроли:
+
+- **Галлюцинации в юридически значимых документах.**  
+  - FATF и индустриальные гайды подчёркивают необходимость полного аудита LLM‑выходов, human‑in‑the‑loop и логирования reasoning chain. [sas](https://www.sas.com/content/dam/sasdam/documents/20250124/how-ai-and-machine-learning-are-redefining-anti-money-laundering.pdf)
+- **Политика SR 11‑7 / SR 26‑2 для LLM.**  
+  - LLM‑модели попадают под определение “model”; для них требуются инвентарь, validation, ongoing monitoring, explainability. [finrep](https://www.finrep.ai/blog/ai-model-risk-management-in-finance-the-2026-practitioners-framework)
+
+***
+
+## Открытые данные, бенчмарки и код
+
+### Публичные AML‑/fraud‑датасеты
+
+- **Elliptic / Elliptic++.**  
+  - Bitcoin‑транзакции и адреса, метки illicit vs licit; Elliptic++ включает ~203k транзакций и 822k адресов для multi‑view graph‑аналитики. [emergentmind](https://www.emergentmind.com/topics/elliptic-dataset-d6795d28-a9a8-455f-928a-26bed56ee2ca)
+  - Недавние работы отмечают, что многие модели дают AUC‑ROC <0.5 на Elliptic, что поднимает вопросы о качестве лейблов и сложности задачи. [arxiv](https://arxiv.org/html/2405.19383v3)
+- **IBM Transactions for AML.**  
+  - Банковские транзакции с подозрительными кейсами; используется для Foundation models, GNN и классических ML. [kaggle](https://www.kaggle.com/datasets/eaLtman2019/ibm-transactions-for-anti-money-laundering-aml/code)
+- **AMLSim / PaySim.**  
+  - Мультиагентный симулятор AML‑графов с типологиями; генерирует CSV‑лог транзакций и метаданные. [sites.google](https://sites.google.com/view/ai4fcf/open-datasets)
+- **Berka (PKDD’99).**  
+  - Реальные анонимизированные данные чешского банка: ~4500 счетов, >1M транзакций, кредиты, карты, демография. [kaggle](https://www.kaggle.com/datasets/marceloventura/the-berka-dataset)
+  - Используется для анализа поведения, кредитного риска и, в недавних работах, графового анализа Hawala с инъекцией AMLSim‑паттернов. [sciencedirect](https://www.sciencedirect.com/science/article/pii/S2405918824000321)
+- **SAML‑D (Anti Money Laundering Transaction Data).**  
+  - Синтетический датасет с 9.5M транзакций, 0.1039% suspicious, 28 типологий, 15 графовых структур; ориентирован на разработку TM‑алгоритмов. [kaggle](https://www.kaggle.com/datasets/berkanoztas/synthetic-transaction-monitoring-dataset-aml)
+
+### Достигаемые качества и их переносимость
+
+- На синтетических и хорошо размеченных наборах (SAML‑D, AMLSim, IBM AML) модели часто достигают F1/ROC‑AUC >0.9. [arxiv](https://arxiv.org/pdf/2203.10465v3.pdf)
+- На Elliptic и реальных банковских данных качество значительно ниже; исследования подчёркивают сильный class imbalance и label noise. [cris.unibo](https://cris.unibo.it/retrieve/handle/11585/1013731/b0b58d09-d3aa-4924-9ea4-0c54b30c1915/Enhancing_Anti-Money_Laundering_Frameworks_An_Application_of_Graph_Neural_Networks_in_Cryptocurrency_Transaction_Classification.pdf)
+
+Причины, почему цифры плохо переносятся в прод:
+
+- Различие в дизайне данных (синтетика vs реальные контрагенты).  
+- Лейблы в проде основаны на SAR, которые сами по себе частично ошибочны и biased. [sas](https://www.sas.com/content/dam/sasdam/documents/20250124/how-ai-and-machine-learning-are-redefining-anti-money-laundering.pdf)
+- Риск‑аппетит и regulatory expectations сильно различаются между юрисдикциями; один и тот же ROC‑AUC может приводить к очень разной доле SAR. [fluxforce](https://www.fluxforce.ai/statistics/false-positive-rates-transaction-monitoring)
+
+### Библиотеки и инструменты
+
+Для вашего кейса практически применимы: [igraph](https://igraph.org/c/html/1.0.1/igraph-Community.html)
+
+- **NetworkX, igraph, graph‑tool.**  
+  - Базовая графовая аналитика: centralities, k‑core/k‑truss, community detection.  
+- **Infomap (map equation), Leiden/Louvain.**  
+  - Для кластеризации сообществ (особенно Infomap для потоков). [dl.acm](https://dl.acm.org/doi/10.1145/3779648)
+- **PyG, DGL, PyGOD, karateclub.**  
+  - Графовые нейросети, anomaly detection на графах. [konstantinklepikov.github](https://konstantinklepikov.github.io/myknowlegebase/lists/graphs.html)
+- **SNAP, snapATR.**  
+  - Масштабная граф‑аналитика (хотя для 2248 узлов это overkill).  
+- **Инструменты визуализации:** Linkurious, Neo4j Bloom, Graphistry.  
+  - Для представления результатов расследователям (подграф‑улика). [neo4j](https://neo4j.com/docs/getting-started/graph-visualization/graph-visualization-tools/)
+
+***
+
+## Эксплуатация: как это живёт в проде
+
+Типичная прод‑архитектура AML TM: [redis](https://redis.io/blog/transaction-monitoring-system/)
+
+- **Потоковые графы и окна наблюдения.**  
+  - Ingestion в real‑time/near‑real‑time (Kafka/streaming), построение time‑aware графа с окнами 1–30 дней для velocity и форензики. [bamboodt](https://www.bamboodt.com/next-generation-aml-transaction-monitoring-systems-real-time-risk-scoring-for-banks-and-fintechs/)
+- **Инкрементальный пересчёт графовых признаков.**  
+  - Большие банки пересчитывают основные центральности и community‑структуру ежесуточно или каждые несколько часов; локальные признаки обновляются по событиям. [redis](https://redis.io/blog/transaction-monitoring-system/)
+- **Переобучение и дрейф поведения.**  
+  - ML‑модели пересматриваются обычно ежеквартально/ежегодно; мониторится дрейф входных распределений и выходов (concept/data drift). [finrep](https://www.finrep.ai/blog/ai-model-risk-management-in-finance-the-2026-practitioners-framework)
+- **Обратная связь от расследований.**  
+  - Case‑менеджмент системы (SAS, NICE Actimize, Lucinity) собирают outcome по алертам (closed, escalated, SAR); это фидбек в rule‑tuning и ML‑модели. [niceactimize](https://www.niceactimize.com/)
+- **Контроль перекоса алертов и fairness.**  
+  - Современные практики включают мониторинг bias по сегментам клиентов, регионам и продуктам, особенно в контексте EU AI Act и fair lending. [risktemplate](https://risktemplate.com/blog/2026-03-30-ai-explainability-requirements-financial-services/)
+
+***
+
+## Консенсус против спорного
+
+### Где индустрия сходится (консенсус)
+
+- **Гибридный стек:** правило‑двигатель + ML‑скоринг + графовая аналитика + расследования/кейсы. [kychub](https://www.kychub.com/blog/aml-transaction-monitoring-2026)
+- **Высокий FPR TM‑слоя:** 90–95% алертов — false positive для традиционных систем. [pro.edgex](https://pro.edgex.exchange/en-US/news/article/ai-tools-for-crypto-compliance)
+- **Ключевая роль типологий:** мониторинг строится вокруг документированных типологий, а не “чистой” аномалии. [linkedin](https://www.linkedin.com/posts/abdulroshana_aml-transactionmonitoring-financialcrime-activity-7425534540896575488-6A2D)
+- **Требования explainability и MRM:** SR 11‑7/26‑2 и аналогичные гайды — обязательный фон для любых сложных моделей. [signzy](https://www.signzy.com/regulation-glossary/model-risk-management-SR-11-7)
+- **LLM‑слой только для triage/нарративов под контролем человека.** [arxiv](https://arxiv.org/abs/2509.08380)
+
+### Где подходы конкурируют (спорно)
+
+- **Entity‑centric vs transaction‑centric графовое моделирование.**  
+  - Quantexa и др. продвигают entity‑centric knowledge graphs; другие строят граф чисто по транзакциям. [quantexa](https://www.quantexa.com/blog/in-the-fight-against-fraud-not-all-graphs-are-created-equal/)
+- **GNN vs feature‑engineering+rules.**  
+  - На исследовательских датасетах GNN часто выигрывают по F1, но практики спорят о переносимости и объяснимости. [cris.unibo](https://cris.unibo.it/retrieve/b0b58d09-d3aa-4924-9ea4-0c54b30c1915/Enhancing_Anti-Money_Laundering_Frameworks_An_Application_of_Graph_Neural_Networks_in_Cryptocurrency_Transaction_Classification.pdf)
+- **Синтетические датасеты (AMLSim/SAML‑D) vs реальные данные.**  
+  - То, насколько синтетика может выступать как proxy для прод‑тюнинга, активно обсуждается. [github](https://github.com/IBM/AMLSim/)
+- **Агрессивное применение LLM для детекции.**  
+  - Регуляторы и крупные банки осторожны, стартапы продвигают “AI native TM”; баланс между риском и выгодой пока не устоялся. [complyadvantage](https://complyadvantage.com/mesh/transaction-monitoring-software/)
+
+***
+
+## Таблица: роль → сигнатура → признаки → пороги → ломка на snowball‑графе
+
+Ниже — упрощённая инженерная таблица для вашей таксономии (с учётом того, что у вас есть только месяц данных, aggregated edges, порог 5000 и snowball‑sampling от seed).
+
+| Роль | Топологическая сигнатура (идеальная сеть) | Конкретные вычислимые признаки (в вашем графе) | Пример пороговой логики (на месяц) | Как роль ломается на snowball‑графе |
+|------|-------------------------------------------|-------------------------------------------------|------------------------------------|-------------------------------------|
+| **Consolidator** | Высокий fan‑in от многих узлов, несколько крупных outflows; длительное накопление средств | in‑degree, суммарный входящий оборот, доля входящих от top‑N контрагентов, низкий out/in volume ratio, средняя длительность удержания (если есть даты вход→выход) | Узел в верхнем квантиле по входящему обороту и in‑degree; out/in volume ratio < 0.5; HHI > 0.3 | Невидимы входящие потоки от узлов вне выборки; порог 5000 скрывает мелкий structuring; seeds могут выглядеть не‑consolidator’ами, если основной inflow ниже порога или извне графа |
+| **Distributor** | Fan‑out к множеству узлов; быстрое “распыление” средств; баланс вход/выход ≈1 | out‑degree, исходящий оборот, ratio out/in > 1, количество уникальных получателей, регулярность исходящих платежей, HHI по получателям | Узел в верхнем квантиле по out‑degree и исходящему обороту; out/in > 2; доля top‑1 получателя < 0.5 (нет единственного funnel‑получателя) | Поскольку обход идёт только по исходящим, любой seed с одним крупным outbound может выглядеть как distributor при отсутствии информации о множестве inbound; терминальные узлы на 4‑м колене искусственно лишены исходящих |
+| **Transit** | Узел с балансом вход/выход ≈1, средней степенью, высокой betweenness; короткая задержка средств | in/out volume ratio ∈ [0.8,1.2]; средний баланс на счёте низкий; betweenness centrality; средняя длина пути через узел; количество “проходящих” потоков (уникальные пары отправитель–получатель, связанные через него) | Узлы с ratio вход/выход близким к 1, betweenness в верхнем квантиле, средней степенью (не листья и не мегахабы) | Betweenness и пути искажены из‑за усечённой сети; многие транзитные узлы вне 4‑х колен невидимы, а внутренние могут казаться “конечными” по наблюдаемому графу |
+| **Distributor** | (см. выше) | (см. выше) | (см. выше) | (см. выше) |
+| **Terminal** | Конечные получатели: низкая исходящая степень, суммарный inflow >> outflow, возможная связь с cash‑out‑каналами | out‑degree = 0 или 1; чистый inflow (in volume − out volume) >> 0; отсутствие циклов; окончания paths | Узел с out‑degree ≤1, в верхнем квантиле чистого inflow, отсутствием наблюдаемых исходящих после окна | На 4‑м колене часть узлов выглядят терминальными **по конструктивным причинам** (обход остановлен); порог по сумме скрывает мелкие outflows; нельзя интерпретировать такие терминалы как настоящие cash‑out без допданных |
+| **Coordinator** | Узел, соединяющий несколько кластеров/типологий; умеренные объёмы, высокая связность и межкластерные связи | Межкластерные связи (количество контрагентов в разных коммунах Infomap/Leiden), degree и betweenness, число связей с узлами, уже помеченными как consolidator/distributor | Узел с высокой межкластерной степенью, betweenness, большим числом соседей из кластеров с подозрительными паттернами, при этом не megahub по суммам | Snowball‑sampling фокусируется на окрестности seed; координаторы вне этих ядер невидимы; оценка “координации” ограничена наблюдаемым подграфом и не может переноситься на весь банк |
+| **Peripheral** | Листья и слабосвязные узлы; низкая степень, малые обороты | degree ≤1–2; обороты в нижнем квантиле; отсутствие циклов | Узел с degree ≤2 и суммарным оборотом ниже медианы; далеко от seed по глубине | Часть периферийных узлов — артефакты отсечения на 5000 тенге (виден один крупный перевод, но множество мелких невидимы); периферийность в выборке ≠ низкий риск, особенно если узел связан с подозрительным seed |
+
+*(Здесь “в верхнем/нижнем квантиле” требуется оценка по вашей выборке; численные пороги — данные‑зависимые.)*
+
+***
+
+## Рекомендуемая эталонная методика для вашего кейса
+
+Ниже — инженерный план, как я бы строил систему ролей и приоритета для **данного** графа: 2248 узлов, 3119 направленных рёбер, 4840 транзакций, BFS от 81 seed, только исходящие, порог 5000 тенге, один месяц.
+
+### 1. Загрузка и построение графа
+
+1. **Загрузка данных.**  
+   - Парсинг CSV транзакций: `from`, `to`, `amount`, `date`, возможно `count`/агрегированные суммы по ребру.  
+
+2. **Построение multigraph.**  
+   - Узлы = клиенты/счета.  
+   - Рёбра = агрегированные направленные связи за месяц с атрибутами: суммарный оборот, количество транзакций, минимум/максимум суммы, список дат/статистика интервалов.  
+
+3. **Маркировка BFS‑структуры.**  
+   - Для каждого узла: расстояние от ближайшего seed (0–4), флаг `is_seed`, флаг `is_boundary` (глубина 4).  
+   - Для рёбер: флаг “пересекает boundary” (из глубины 3 в 4).  
+
+### 2. Feature‑engineering с поправкой на дизайн выборки
+
+Разделить признаки на:
+
+- **Локальные агрегаты (устойчивее к boundary‑problem).**  
+  - in/out‑degree, in/out‑volume, counts, HHI по контрагентам, медианы и дисперсии сумм, регуляторно значимые пороги (например, близость к 10 000+ тенге).  
+
+- **Квазиглобальные, но с нормировкой.**  
+  - PageRank/HITS, betweenness, k‑core/k‑truss, мотивы — считать, но **интерпретировать только внутри кольца глубины ≤2–3** и с пониженными весами уверенности.  
+
+- **Временные признаки.**  
+  - Кол‑во транзакций в последних X днях, burstiness (например, коэффициент по Starnini et al. для smurfing). [isi](https://www.isi.it/wp-content/uploads/2024/01/smurf-based-anti-money-laundering-in-time-evolving-transaction-networks_Starnini2021_Chapter_Smurf-BasedAnti-moneyLaunderin.pdf)
+
+Обязательно добавить **метаданные выборки** как признаки:
+
+- `depth_from_seed`, `is_boundary`, `is_seed`.  
+- Отношение оборота узла к обороту ближайших соседей; это помогает смягчить bias – сравнивать узел с локальной средой, а не с глобальной выборкой. [link.springer](https://link.springer.com/article/10.1007/s10109-020-00340-4)
+
+### 3. Поправки на одностороннюю выгрузку и порог
+
+- При расчёте **ratio вход/выход** учитывать, что входящие от узлов вне выборки не видны; использовать только наблюдаемый inflow и явно помечать, что ratio — lower bound/biased estimate.  
+- Для structuring/smurfing‑паттернов использовать **proxy‑признаки**: много транзакций чуть выше порога (напомним: вы отрезали <5000, надо смотреть “много транзакций около 5000+” и временную кластеризацию). [remitso](https://www.remitso.com/blogs/aml-typologies-money-laundering-patterns)
+- Любые выводы “эта схема — чистый smurfing ниже порога” **явно запрещены** — данных нет.
+
+### 4. Алгоритм присвоения ролей и скорингов
+
+#### 4.1 Базовое присвоение роли
+
+1. **Расчёт rule‑based score для каждой роли.**  
+   Для каждого узла посчитать шесть скоров \(s_\text{role}\) по правилам, основанным на признаках (пороговые условия и линейные комбинации). Например:
+
+   - *Consolidator:* high in‑volume, high in‑degree, out/in < 0.5, HHI по входящим > 0.3.  
+   - *Distributor:* high out‑volume и out‑degree, out/in > 2, HHI по исходящим < 0.5.  
+   - *Transit:* out/in ∈ [0.8,1.2], betweenness в верхнем квантиле, средняя степень.  
+   - *Terminal:* out‑degree ≤1, чистый inflow в верхнем квантиле, `is_boundary`=True.  
+   - *Coordinator:* высокий межкластерный degree и betweenness, наличие соседей с high suspicion scores.  
+   - *Peripheral:* degree ≤2, обороты ниже медианы, глубина ≥3.  
+
+2. **Нормировка и soft‑role.**  
+   - Нормировать скоры в распределение вероятностей \(p(\text{role}|node)\) через softmax или простую min‑max нормировку.  
+
+3. **Выбор основной роли и confidence.**  
+   - Основная роль = argmax; confidence = разница между топ‑1 и топ‑2 скоров (чем меньше, тем больше неоднозначность).  
+
+4. **Коррекция по глубине и boundary.**  
+   - Для узлов с `depth`=4 автоматически снижать confidence (например, максимум 0.6) и не делать “сильных” выводов про coordinator/consolidator — только terminal/peripheral/transit.
+
+#### 4.2 Детектирование сообществ
+
+1. **Infomap на направленном взвешенном графе.**  
+   - Веса = суммарная сумма или количество транзакций; использовать Infomap с map equation для directed weighted network. [ar5iv.labs.arxiv](https://ar5iv.labs.arxiv.org/html/2311.04036)
+
+2. **Cluster‑level features.**  
+   - Для каждого кластера: суммарный оборот, количество узлов, доля ролей (например, доля consolidator/distributor), fan‑in/fan‑out паттерн, глубина от seed.  
+
+3. **Типологическая гипотеза по кластеру.**  
+   - На основе распределения ролей и потока формулировать гипотезу:  
+     - кластер с несколькими consolidator и многими peripheral/distributor = возможно smurfing/funnel;  
+     - линейные/цепочечные кластеры с transit/coord = layering;  
+     - циклические кластеры = round‑tripping/loop‑schemes. [fluxforce](https://www.fluxforce.ai/typologies/round-tripping)
+
+#### 4.3 Аномальный скор подозрительности
+
+1. **Безнадзорные детекторы на признаках узла.**  
+   - Isolation Forest, LOF, autoencoder; каждый даёт anomaly‑score. [skemman](https://skemman.is/bitstream/1946/44727/1/Unsupervised_Anomaly_Detection_in_Financial_Transactions.pdf)
+
+2. **Типологический скор.**  
+   - Набор правил по известным типологиям (structuring, funnel, layering, fan‑in/fan‑out, round‑tripping), дающий балл 0–1. [kaggle](https://www.kaggle.com/datasets/berkanoztas/synthetic-transaction-monitoring-dataset-aml)
+
+3. **Кластерный скор.**  
+   - Аномальность кластера (например, доля узлов с high anomaly‑score, подозрительная топология).  
+
+4. **Meta‑скор узла.**  
+   - Итоговый подозрительный скор \(S_{\text{node}}\) = взвешенная сумма:  
+     \[
+     S = w_1 \cdot S_\text{anomaly} + w_2 \cdot S_\text{typology} + w_3 \cdot S_\text{cluster}
+     \]
+     где веса калибруются на основе небольшой экспертной разметки или injected‑паттернов (например, из AMLSim, если вы захотите совместить). [scribd](https://www.scribd.com/document/851533086/Detecting-Hawala-network-for-money-launderi-2024-The-Journal-of-Finance-and)
+
+### 5. Формирование ранжированного списка узлов для расследования
+
+1. **Фильтрация по ролям и meta‑скору.**  
+   - Приоритизировать узлы с ролями consolidator, distributor, coordinator и высокими \(S\); периферийные и terminal с низким S можно рассматривать позже.  
+
+2. **Учет глубины и coverage.**  
+   - Узлы с глубиной 1–2 вокруг наиболее подозрительных seed — приоритет выше, чем глубина 3–4.  
+
+3. **Ранжированный список.**  
+   - Вывести top‑N узлов (например, 50–100) с наивысшим S и указанием роли, кластера, ключевых фич (см. ниже формат строки‑улики).  
+
+### 6. Формат “строки‑улики с числами” для аналитика
+
+Для каждого узла в top‑N сформировать запись, которую аналитик способен понять за одну минуту:
+
+- **Идентификатор узла** (счёт/клиент).  
+- **Назначенная роль** + confidence.  
+- **Кластер** (ID, типологическая гипотеза: structuring/funnel/layering...).  
+- **Ключевые численные признаки:**  
+  - in/out‑degree, in/out‑volume и ratio,  
+  - HHI по контрагентам,  
+  - количество транзакций в последние X дней,  
+  - наличие циклов/длина цепей,  
+  - anomaly‑scores (IF/LOF/AE).  
+- **Причины (reason codes):**  
+  - “fan‑in от 12 узлов, 80% оборота от 3 контрагентов, out/in=0.3, high betweenness, кластер с layering‑паттерном”.  
+
+Эта строка соединяется с визуализацией подграфа (через Linkurious/Graphistry/NetworkX+Plotly), что обеспечивает как цифровую, так и визуальную “улику”. [linkurious](https://linkurious.com/aml-investigation-solution/)
+
+### 7. Кластеризация и гипотезы назначения
+
+На основе Infomap‑кластеров:
+
+- Для каждого кластера сформировать **типологическую гипотезу** + список ключевых узлов (coord/consolidator/distributor).  
+- Кластеры с явными fan‑in/fan‑out и structuring‑признаками пометить как high‑risk; кластеры с линейными цепями — layering; дисперсные кластеры с транзитными узлами — менее приоритетны.  
+
+### 8. Явный список выводов, которые на этих данных делать нельзя
+
+С учётом всех ограничений:
+
+- Нельзя утверждать **глобальный риск узла/кластера по отношению ко всему банку** — только относительный риск в наблюдаемой выборке.  
+- Нельзя делать выводы о **главной роли клиента в общей сети** (например, “главный координатор по стране”) — сеть усечена BFS‑обходом. [ajbr.co](https://ajbr.co.nz/ajbr/ajbr250186.pdf)
+- Нельзя надёжно идентифицировать **типологии, критически зависящие от географии, каналов, MCC, KYC‑профилей** — эти атрибуты отсутствуют.  
+- Нельзя восстанавливать **structuring ниже порога** — транзакции <5000 тенге невидимы; любые гипотезы о таком поведении должны маркироваться как спекулятивные.  
+- Нельзя оценивать **fairness/discrimination** модели (по возрасту, сегменту) — нет соответствующих атрибутов клиента. [risktemplate](https://risktemplate.com/blog/2026-03-30-ai-explainability-requirements-financial-services/)
+- Нельзя говорить о **stage‑level (placement/layering/integration)** с уверенностью — у вас только один месяц данных, без широкого продуктового и временного охвата. [linkedin](https://www.linkedin.com/posts/gururaja-tadipatri-931a9325_what-is-fatfs-understanding-of-the-stages-activity-7427064027719081984-Ge4-)
+
+***
+
+Если хотите, следующий шаг можно сделать максимально прикладным: описать конкретные формулы признаков, псевдокод пайплайна (например, на Python/NetworkX/PyOD) и пример формата отчёта по top‑узлам для ваших 2248 клиентов — с учётом того, что у вас сейчас нет меток, но есть описанная структура графа.

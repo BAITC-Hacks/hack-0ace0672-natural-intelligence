@@ -286,7 +286,11 @@ def build(out: Path = OUT, layout: str = "flow", label_top: int = 12) -> Path:
 
     out.mkdir(parents=True, exist_ok=True)
     path = out / "graph.html"
-    net.write_html(str(path), notebook=False, open_browser=False)
+    # net.write_html() открывает файл в кодировке системы. На Windows с cp1251
+    # это падает на кириллице в подписях и оставляет файл нулевого размера —
+    # молча, файл в каталоге выглядит существующим. Воспроизводится у любого,
+    # у кого не включён режим UTF-8, то есть с большой вероятностью у жюри.
+    path.write_text(net.generate_html(notebook=False), encoding="utf-8")
     _add_legend(path, nodes)
     return path
 

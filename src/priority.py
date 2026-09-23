@@ -69,7 +69,10 @@ def top_nodes(df: pd.DataFrame, n: int = 25) -> pd.DataFrame:
     top = df.nlargest(n, "priority_score").reset_index(drop=True)
     top["rank"] = top.index + 1
     top["why"] = [_why(r) for r in top.itertuples(index=False)]
-    return top[["rank", "gid", "role", "priority_score", "why"]]
+    cols = ["rank", "gid", "role", "priority_score", "why"]
+    if "next_request" in top.columns:
+        cols.append("next_request")   # что запросить по этому узлу дальше
+    return top[cols]
 
 
 def _why(r) -> str:

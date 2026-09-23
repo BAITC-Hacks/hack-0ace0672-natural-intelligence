@@ -10,7 +10,8 @@ import argparse
 import time
 from pathlib import Path
 
-from src import clusters, features, motifs, priority, resilience, roles, schema, text
+from src import (anomaly, clusters, features, gaps, motifs, priority,
+                 resilience, roles, schema, text)
 from src.io import DATA_DIR, OUT_DIR, build_graph, load, seeds
 from src.mock import write_graph_json
 
@@ -42,11 +43,17 @@ def main() -> None:
           f"{len(motif_pairs)} пар в motifs.csv")
 
     df = clusters.assign(df, G)
+    df = anomaly.compute(df)      # выбросы относительно своего колена, а не всей выборки
+    df = gaps.add_column(df)      # какой запрос закроет белое пятно по узлу
     df = priority.score(df)
 
     print("\nраспределение ролей:")
     print(df.role.value_counts().to_string())
     print("\n" + priority.sanity(df))
+
+    flagged = int((df.anomaly_flags >= anomaly.MIN_FLAGS).sum())
+    print(f"\nаномальных профилей относительно своего колена вне забора Q3+3*IQR: {flagged}")
+    print("\n" + gaps.summary(df))
 
     res = resilience.report(df, G)
     print("\nУСТОЙЧИВОСТЬ СЕТИ при изъятии топ-N узлов (опциональный пункт ТЗ)")
@@ -59,7 +66,8 @@ def main() -> None:
              "hhi_in", "hhi_out", "in_cycle_le6", "was_expanded",
              "in_tx", "out_tx", "max_edge_n_tx", "sync_in_events", "sent_before_received",
              "cycle_time_ok", "passthrough_matches",
-             "shared_receivers_max", "shared_receivers_z"]
+             "shared_receivers_max", "shared_receivers_z",
+             "anomaly_flags", "anomaly_ratio", "anomaly_why", "next_request"]
     df[schema.NODES_ROLES_COLUMNS + extra].to_csv(a.out / "nodes_roles.csv", index=False)
     clusters.summarize(df, edges).to_csv(a.out / "clusters.csv", index=False)
     priority.top_nodes(df).to_csv(a.out / "top_nodes.csv", index=False)

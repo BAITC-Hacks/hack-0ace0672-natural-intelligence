@@ -10,7 +10,7 @@ import argparse
 import time
 from pathlib import Path
 
-from src import clusters, features, priority, resilience, roles, schema
+from src import clusters, features, motifs, priority, resilience, roles, schema
 from src.io import DATA_DIR, OUT_DIR, build_graph, load, seeds
 from src.mock import write_graph_json
 
@@ -33,6 +33,14 @@ def main() -> None:
     print(f"признаки посчитаны: {df.shape[1]} колонок")
 
     df = roles.assign(df, G)
+
+    # Аддитивный слой: четыре колонки и дописка в evidence. Роли и пороги не трогает.
+    df, motif_pairs = motifs.compute(G, tx, df)
+    df = motifs.augment_evidence(df)
+    print(f"мотивы: {int(df.cycle_time_ok.sum())} узлов в циклах с верной хронологией, "
+          f"{int((df.passthrough_matches > 0).sum())} узлов со сквозными платежами, "
+          f"{len(motif_pairs)} пар в motifs.csv")
+
     df = clusters.assign(df, G)
     df = priority.score(df)
 
@@ -48,11 +56,27 @@ def main() -> None:
     extra = ["depth", "is_seed", "in_deg", "out_deg", "in_kzt", "out_kzt",
              "transit_ratio", "net_flow", "external_funding_gap", "taint_share",
              "external_share", "ppr", "n_seeds_upstream", "median_delay_days",
-             "hhi_in", "hhi_out", "in_cycle_le6", "was_expanded"]
+             "hhi_in", "hhi_out", "in_cycle_le6", "was_expanded",
+             "cycle_time_ok", "passthrough_matches",
+             "shared_receivers_max", "shared_receivers_z"]
     df[schema.NODES_ROLES_COLUMNS + extra].to_csv(a.out / "nodes_roles.csv", index=False)
     clusters.summarize(df, edges).to_csv(a.out / "clusters.csv", index=False)
     priority.top_nodes(df).to_csv(a.out / "top_nodes.csv", index=False)
+    motif_pairs.to_csv(a.out / "motifs.csv", index=False)
     write_graph_json(df, edges, a.out / "graph.json")
+
+    # Автономная схема: если app.py не поднимется на демо, must-have №5
+    # всё равно закрыт файлом, который открывается двойным кликом.
+    try:
+        from src import viz
+        built = viz.build(a.out)
+        # pyvis на Windows пишет файл в кодировке по умолчанию и молча оставляет
+        # 0 байт, если в подписях есть кириллица. Пустая страховка хуже отсутствующей.
+        if built.stat().st_size < 10_000:
+            print(f"ВНИМАНИЕ: {built.name} собран пустым ({built.stat().st_size} байт) — "
+                  f"автономная схема не откроется")
+    except Exception as exc:
+        print(f"graph.html не собран ({exc}) — интерфейс через app.py остаётся")
 
     print()
     schema.validate(a.out)

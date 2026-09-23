@@ -19,6 +19,7 @@ from collections import defaultdict
 import networkx as nx
 import numpy as np
 import pandas as pd
+from math import erfc, sqrt
 
 from src.text import plural as _plural
 
@@ -180,6 +181,11 @@ def shared_receivers(G: nx.DiGraph) -> pd.DataFrame:
         exp, sd = cache[key]
         if exp < MIN_EXPECTED:
             continue
+        z = (shared - exp) / sd
+        # Поправка на множественные сравнения: проверяется не одна пара, а десятки,
+        # и при 21 проверке порог 0.05 даёт ложное срабатывание примерно раз из
+        # каждых двух прогонов. Бонферрони строг, но защищает от именно этого.
+        p_value = 0.5 * erfc(z / sqrt(2))
         rows.append({
             "kind": "shared_receivers",
             "gid_a": a,
@@ -188,14 +194,20 @@ def shared_receivers(G: nx.DiGraph) -> pd.DataFrame:
             "out_deg_a": da,
             "out_deg_b": db,
             "expected": round(exp, 2),
-            "z": round((shared - exp) / sd, 2),
+            "z": round(z, 2),
+            "p_value": p_value,
         })
-    return pd.DataFrame(rows).sort_values("z", ascending=False).reset_index(drop=True)
+    out = pd.DataFrame(rows).sort_values("z", ascending=False).reset_index(drop=True)
+    if len(out):
+        # Порог Бонферрони считается от ЧИСЛА фактически проверенных пар
+        out["survives_bonferroni"] = out.p_value < 0.05 / len(out)
+    return out
 
 
 def _empty_pairs() -> pd.DataFrame:
-    return pd.DataFrame(columns=["kind", "gid_a", "gid_b", "shared",
-                                 "out_deg_a", "out_deg_b", "expected", "z"])
+    return pd.DataFrame(columns=["kind", "gid_a", "gid_b", "shared", "out_deg_a",
+                                 "out_deg_b", "expected", "z", "p_value",
+                                 "survives_bonferroni"])
 
 
 # ----------------------------------------------- 4. общие посредники (scatter-gather)
@@ -221,7 +233,7 @@ def shared_intermediaries(G: nx.DiGraph, min_mid: int = 3) -> pd.DataFrame:
     rows = [
         {"kind": "shared_intermediaries", "gid_a": a, "gid_b": b, "shared": len(m),
          "out_deg_a": G.out_degree(a), "out_deg_b": G.out_degree(b),
-         "expected": None, "z": None}
+         "expected": None, "z": None, "p_value": None, "survives_bonferroni": None}
         for (a, b), m in via.items()
         if len(m) >= min_mid and not G.has_edge(a, b)
     ]

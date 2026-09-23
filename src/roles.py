@@ -55,9 +55,15 @@ def assign(df: pd.DataFrame, G: nx.DiGraph) -> pd.DataFrame:
     role[~has_edges.values] = "peripheral"
 
     is_transit = both & (df.transit_ratio >= TRANSIT_RATIO_MIN)
+    # Веер определяется числом получателей и низкой концентрацией, а НЕ тем,
+    # удержал ли узел часть денег. Проверка planted-injection показала: узел,
+    # принявший 4 млн и разославший 4.5 млн на 20 получателей, имеет net_flow
+    # около нуля и при старом условии (net_flow <= -0.3) уходил в transit —
+    # ни один внедрённый веер не опознавался. Требуем лишь, чтобы узел
+    # не был накопителем.
     is_distrib = (
         (df.out_deg >= MIN_OUT_DEG_DISTRIBUTOR)
-        & (df.net_flow <= NET_FLOW_DISTRIBUTE)
+        & (df.net_flow < NET_FLOW_CONSOLIDATE)
         & (df.hhi_out < HHI_OUT_FAN)
     )
     is_consol = (df.in_deg >= MIN_IN_DEG_CONSOLIDATOR) & (df.net_flow >= NET_FLOW_CONSOLIDATE)

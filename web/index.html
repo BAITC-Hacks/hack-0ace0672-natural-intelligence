@@ -84,6 +84,13 @@
         border-bottom:1px dashed rgba(45,212,191,.5)}
   .grow{flex:1;min-height:0;overflow-y:auto}
   a{color:var(--accent)}
+  .fatal{grid-column:1/-1;display:flex;align-items:center;justify-content:center;
+         padding:40px;text-align:left}
+  .fatal>div{max-width:560px}
+  .fatal h1{font-size:22px}
+  .fatal pre{background:#0d2140;border:1px solid var(--line);border-radius:8px;
+             padding:12px 14px;font-size:13px;overflow-x:auto;margin:10px 0}
+  code{background:#0d2140;padding:1px 5px;border-radius:4px;font-size:12px}
   /* Ноутбук жюри может оказаться уже нашего: отдаём схеме место, а не панелям,
      и убираем подсказку, которая иначе наезжает на кнопки. */
   @media (max-width:1400px){
@@ -115,6 +122,16 @@ const ROLE_RU = {
 const ROLE_ORDER = ['coordinator','consolidator','distributor','transit',
                     'terminal','terminal_unknown','peripheral'];
 
+// Ответ с ошибкой — это тоже валидный JSON ({"detail": "..."}), и без этой
+// обёртки он молча попадал в состояние вместо массива, а первый же .map()
+// ронял всё приложение в пустой экран. Теперь ошибка остаётся ошибкой.
+const getJSON = (url, opts) => fetch(url, opts).then(async r => {
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || `${url}: ${r.status}`);
+  return body;
+});
+const asList = d => Array.isArray(d) ? d : [];
+
 const num = n => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('ru-RU', {maximumFractionDigits:0});
 const kzt = n => n == null ? '—' :
@@ -135,9 +152,11 @@ const NODES = ['узел', 'узла', 'узлов'];
 
 function Graph({onPick, api, layout, hidden, labels}) {
   const box = useRef(null), cy = useRef(null), loaded = useRef(false);
+  const [err, setErr] = useState(null);
 
   useEffect(() => {
-    fetch(`/api/graph?layout=${layout}`).then(r => r.json()).then(data => {
+    setErr(null);
+    getJSON(`/api/graph?layout=${layout}`).then(data => {
       const top = [...data.nodes].sort((a,b) => b.priority - a.priority)
                                  .slice(0, 10).map(n => n.id);
       const named = new Set(top);
@@ -230,7 +249,7 @@ function Graph({onPick, api, layout, hidden, labels}) {
         cy.current.resize();
         cy.current.fit(undefined, 40);
       });
-    });
+    }).catch(e => setErr(e.message));
     return () => { cy.current && cy.current.destroy(); loaded.current = false; };
   }, [layout]);
 
@@ -251,6 +270,13 @@ function Graph({onPick, api, layout, hidden, labels}) {
       n.data('label', (labels || n.data('istop')) ? LABEL(n.id()) : '')));
   }, [labels]);
 
+  if (err) return (
+    <div id="cy" style={{display:'flex',alignItems:'center',justifyContent:'center',padding:30}}>
+      <p className="sub" style={{maxWidth:420,textAlign:'center'}}>
+        Схему загрузить не удалось: {err}
+      </p>
+    </div>
+  );
   return <div id="cy" ref={box}></div>;
 }
 
@@ -350,13 +376,14 @@ function NodeCard({gid, api, onGo, onAsk, setBanner}) {
   const expand = () => {
     if (!d || busy) return;
     setBusy(true);
-    fetch(`/api/subgraph/${d.gid}?hops=1`).then(r => r.json()).then(sub => {
+    getJSON(`/api/subgraph/${d.gid}?hops=1`).then(sub => {
       const added = api.current ? api.current.addSubgraph(sub) : 0;
       api.current && api.current.highlight(d.gid);
       setBanner({text:`Связи узла ${d.gid}: ${plural(sub.nodes.length - 1, CONTR)}` +
                       (added ? `, из них ${added} дорисовано на схему` : ', все уже были на схеме') +
                       (sub.truncated ? '. Показаны крупнейшие по сумме.' : '')});
-    }).finally(() => setBusy(false));
+    }).catch(e => setBanner({bad:true, text:'Не удалось загрузить связи: ' + e.message}))
+      .finally(() => setBusy(false));
   };
 
   if (!gid) return <p className="sub">Кликните узел на схеме, найдите по gid или выберите строку в топе.</p>;
@@ -469,9 +496,8 @@ function Chat({api, onGo, onCite, seed, onSeedUsed}) {
     const question = q.trim();
     if (!question || busy) return;
     setLog(l => [...l, {me:true, text:question}]); setQ(''); setBusy(true);
-    fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
-                       body: JSON.stringify({question})})
-      .then(r => r.json())
+    getJSON('/api/ask', {method:'POST', headers:{'Content-Type':'application/json'},
+                         body: JSON.stringify({question})})
       .then(r => {
         setLog(l => [...l, {text:r.answer, mode:r.mode, gids:r.cited_gids || []}]);
         if (r.cited_gids && r.cited_gids.length) onCite(r.cited_gids);
@@ -532,14 +558,16 @@ function App() {
   const [labels, setLabels] = useState(false);
   const [banner, setBanner] = useState(null);
   const [askSeed, setAskSeed] = useState(null);
+  const [fatal, setFatal] = useState(null);
   const api = useRef(null);
 
   useEffect(() => {
-    fetch('/api/meta').then(r => r.json()).then(setMeta).catch(() => {});
-    fetch('/api/top').then(r => r.json()).then(setTop).catch(() => {});
+    // meta обязателен: без выгрузок показывать нечего, и лучше честно сказать
+    // об этом на весь экран, чем оставить аналитика перед пустой страницей
+    getJSON('/api/meta').then(setMeta).catch(e => setFatal(e.message));
+    getJSON('/api/top').then(d => setTop(asList(d))).catch(() => setTop([]));
     // блок устойчивости появляется, только если ядро его посчитало
-    fetch('/api/resilience').then(r => r.json())
-      .then(d => setRes(Array.isArray(d) ? d : [])).catch(() => {});
+    getJSON('/api/resilience').then(d => setRes(asList(d))).catch(() => setRes([]));
   }, []);
 
   // Поиск по gid — must-have №5. Работает по всем 2248 узлам, а не только
@@ -617,6 +645,23 @@ function App() {
 
   const shown = (meta && meta.roles_shown) || {};
   const total = (meta && meta.roles) || {};
+
+  if (fatal) return (
+    <div className="fatal">
+      <div>
+        <h1>Нет выгрузок</h1>
+        <p className="sub" style={{fontSize:14,margin:'10px 0 18px'}}>{fatal}</p>
+        <p>Интерфейс читает готовые файлы из <code>out/</code>. Сначала соберите их:</p>
+        {/* строка задана явно: JSX схлопывает перенос внутри разметки в пробел */}
+        <pre>{'pip install -r requirements.txt\npython run.py'}</pre>
+        <p className="sub" style={{fontSize:12}}>
+          Занимает пару секунд, работает офлайн и без ключей.
+          После этого обновите страницу.
+        </p>
+        <button style={{marginTop:14}} onClick={() => location.reload()}>Обновить</button>
+      </div>
+    </div>
+  );
 
   return (
     <>

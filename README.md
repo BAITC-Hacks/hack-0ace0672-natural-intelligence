@@ -75,7 +75,7 @@ data/*.parquet  ──►  features.py  ──►  roles.py  ──►  clusters
                         ┌──────────────────┴──────────────────┐
                         ▼                                     ▼
               app.py + web/index.html              src/agent.py + src/tools.py
-              схема сети, поиск по gid              6 инструментов, tool-calling
+              схема сети, поиск по gid              7 инструментов, tool-calling
 ```
 
 ---
@@ -376,7 +376,7 @@ python validate_injection.py
 python -m src.agent "почему у узла 100000000331309100 такая роль?"
 ```
 
-Под капотом — шесть функций на pandas поверх тех же выгрузок ([`src/tools.py`](src/tools.py)):
+Под капотом — семь функций на pandas поверх тех же выгрузок ([`src/tools.py`](src/tools.py)):
 
 | Инструмент | Назначение |
 |---|---|
@@ -386,6 +386,7 @@ python -m src.agent "почему у узла 100000000331309100 такая ро
 | `top_nodes(role, cluster_id, n)` | топ по приоритету с фильтрами |
 | `cluster_summary(cluster_id)` | состав ролей, оборот, seed, гипотеза |
 | `find_nodes(filters)` | отбор по признакам: `{"taint_share": ">0.8", "out_deg": ">20"}` |
+| `network_resilience(removed)` | что будет с сетью при изъятии топ-N узлов (§7) |
 
 Модель — `deepseek-flash`, tool-calling. Ключ берётся **только** из переменной окружения:
 
@@ -393,7 +394,7 @@ python -m src.agent "почему у узла 100000000331309100 такая ро
 cp .env.example .env    # и вписать ключ в DEEPSEEK_API_KEY
 ```
 
-**Без ключа или без сети ассистент не падает,** а отвечает шаблонами поверх тех же шести
+**Без ключа или без сети ассистент не падает,** а отвечает шаблонами поверх тех же семи
 функций. Демонстрация не зависит от наличия интернета.
 
 ---
@@ -444,7 +445,7 @@ src/roles.py          пороговые правила ролей + role_score 
 src/clusters.py       слабосвязные компоненты + Louvain, гипотезы
 src/priority.py       priority_score, топ-лист, санитарная проверка
 src/schema.py         замороженный контракт выгрузок + валидатор
-src/tools.py          шесть функций для ассистента
+src/tools.py          семь функций для ассистента
 src/agent.py          ассистент с tool-calling и фолбэком
 web/index.html        React 18 + Cytoscape.js, без сборки
 docs/                 план, распределение работ, ТЗ, сценарий демо

@@ -39,7 +39,7 @@ SYSTEM = f"""Ты — ассистент AML-аналитика. Работае�
 Роли назначаются пороговыми правилами, проверяются сверху вниз, первое совпадение выигрывает:
 transit — transit_ratio >= {roles.TRANSIT_RATIO_MIN};
 consolidator — in_deg >= {roles.MIN_IN_DEG_CONSOLIDATOR} и net_flow >= {roles.NET_FLOW_CONSOLIDATE};
-distributor — out_deg >= {roles.MIN_OUT_DEG_DISTRIBUTOR}, net_flow <= {roles.NET_FLOW_DISTRIBUTE}, hhi_out < {roles.HHI_OUT_FAN};
+distributor — out_deg >= {roles.MIN_OUT_DEG_DISTRIBUTOR}, net_flow < {roles.NET_FLOW_CONSOLIDATE} (узел не накопитель), hhi_out < {roles.HHI_OUT_FAN};
 coordinator — деньги от >= {roles.COORD_MIN_SEEDS} фигурантов, in_deg >= {roles.COORD_MIN_IN_DEG} и out_deg >= {roles.COORD_MIN_OUT_DEG};
 terminal — нет исходящих, обход узел разворачивал; terminal_unknown — нет исходящих,
 но узел на 4-м колене и обход оборван, конечность НЕ подтверждена.
@@ -79,6 +79,11 @@ TOOLS_SPEC = [
         "name": "find_nodes",
         "description": "Отбор узлов по признакам. Условия вида {'taint_share': '>0.8', 'out_deg': '>20'}",
         "parameters": {"type": "object", "properties": {"filters": {"type": "object"}}, "required": ["filters"]}}},
+    {"type": "function", "function": {
+        "name": "network_resilience",
+        "description": "Что будет с сетью при изъятии топ-N узлов: число компонент против случайного изъятия",
+        "parameters": {"type": "object", "properties": {
+            "removed": {"type": "integer", "description": "шаг: 5, 10, 20 или 50; без него вся таблица"}}}}},
 ]
 
 
@@ -247,7 +252,7 @@ def _explain_role(d: dict) -> str:
 
 
 def _fallback(question: str) -> dict:
-    """Шаблонные ответы на тех же шести функциях. Работает без сети и без ключа."""
+    """Шаблонные ответы на тех же семи функциях. Работает без сети и без ключа."""
     q = question.lower()
     gids = [int(x) for x in re.findall(r"\b\d{15,20}\b", question)]
 
@@ -294,19 +299,47 @@ def _fallback(question: str) -> dict:
                           "\nЭто гипотеза по структуре переводов, а не утверждение о виновности.",
                 "cited_gids": [c["gid"] for c in d["collectors"][:5]], "mode": "fallback"}
 
-    # 5. Кластеры.
+    # 5. Устойчивость сети — опциональный пункт ТЗ.
+    if any(w in q for w in ("изъя", "изым", "устойчив", "распад", "блокир", "удалить узл",
+                            "убрать узл", "развалит")):
+        d = tools.network_resilience()
+        if "error" in d:
+            return {"answer": d["error"], "cited_gids": [], "mode": "fallback"}
+        lines = [f"  изъять топ-{s['removed']} → компонент связности: {s['components_targeted']} "
+                 f"(при случайном изъятии {s['components_random']}, разрыв в "
+                 f"{s['ratio_vs_random']} раза); крупнейшая компонента: {s['largest_targeted']} "
+                 f"(случайно {s['largest_random']:.0f}); полностью изолированных счетов: "
+                 f"{s['isolated_targeted']}" for s in d["steps"]]
+        top5 = [x["gid"] for x in tools.top_nodes(n=5)["nodes"]]
+        return {"answer": "Что будет с сетью при изъятии узлов из топа приоритета:\n"
+                          + "\n".join(lines) +
+                          "\n\nСлучайное изъятие берётся как базис — среднее по 5 прогонам. "
+                          "Разрыв показывает, что приоритет нашёл узлы связности, а не просто "
+                          "крупные обороты. Это проверка осмысленности топ-листа, а не "
+                          "рекомендация блокировать счета.\n"
+                          f"Первые пять узлов топа: {', '.join(map(str, top5))}",
+                "cited_gids": top5, "mode": "fallback"}
+
+    # 6. Кластеры. Ранжируем по числу фигурантов, а не по размеру: кластер из 26 узлов
+    # с 14 фигурантами для аналитика важнее компоненты на 270 узлов с одним.
     if "кластер" in q:
         from src.tools import _data
         _, clusters, _, _ = _data()
-        big = clusters.nlargest(5, "n_nodes")
-        lines = [f"  кластер {int(r.cluster_id)}: {int(r.n_nodes)} узлов, {int(r.n_seed)} фигурантов, "
-                 f"оборот внутри {r.sum_kzt_internal/1e6:.1f} млн\n    {r.hypothesis}"
-                 for r in big.itertuples(index=False)]
+        by = "n_nodes" if any(w in q for w in ("крупн", "больш", "размер")) else "n_seed"
+        head = "Крупнейшие кластеры по числу узлов:" if by == "n_nodes" else \
+               "Самые значимые кластеры — по числу сошедшихся в них фигурантов:"
+        big = clusters.nlargest(5, by)
+        lines = []
+        for r in big.itertuples(index=False):
+            dom = f", преобладает {r.dominant_role}" if getattr(r, "dominant_role", None) else ""
+            mx = f", максимальный приоритет {r.max_priority}" if hasattr(r, "max_priority") else ""
+            lines.append(f"  кластер {int(r.cluster_id)}: {int(r.n_nodes)} узлов, "
+                         f"фигурантов {int(r.n_seed)}, оборот внутри "
+                         f"{r.sum_kzt_internal/1e6:.1f} млн{dom}{mx}\n    {r.hypothesis}")
         cited = [int(x) for x in ";".join(big.top_gids).split(";") if x]
-        return {"answer": "Крупнейшие кластеры:\n" + "\n".join(lines),
-                "cited_gids": cited[:5], "mode": "fallback"}
+        return {"answer": head + "\n" + "\n".join(lines), "cited_gids": cited[:5], "mode": "fallback"}
 
-    # 6. Запрос по роли.
+    # 7. Запрос по роли.
     for word, role in _ROLE_WORDS.items():
         if word in q:
             d = tools.top_nodes(role=role, n=5)
@@ -318,7 +351,7 @@ def _fallback(question: str) -> dict:
                               + "\n".join(lines),
                     "cited_gids": [x["gid"] for x in d["nodes"]], "mode": "fallback"}
 
-    # 7. «Получают от многих, отдают немногим» — отбор по признакам.
+    # 8. «Получают от многих, отдают немногим» — отбор по признакам.
     if ("от многих" in q or "многих" in q) and ("немноги" in q or "мало" in q or "одному" in q):
         d = tools.find_nodes({"in_deg": ">=3", "hhi_out": ">0.5", "net_flow": ">0"}, n=5)
         lines = [f"  {x['gid']} — {x['role']}, приоритет {x['priority_score']}, {x['evidence']}"
@@ -328,7 +361,7 @@ def _fallback(question: str) -> dict:
                           f"{d.get('matched', 0)}. Первые по приоритету:\n" + "\n".join(lines),
                 "cited_gids": [x["gid"] for x in d.get("nodes", [])], "mode": "fallback"}
 
-    # 8. По умолчанию — очередь проверки.
+    # 9. По умолчанию — очередь проверки.
     d = tools.top_nodes(n=5)
     lines = [f"  {x['gid']} — {x['role']}, приоритет {x['priority_score']}, {x['evidence']}"
              for x in d["nodes"]]

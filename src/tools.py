@@ -283,6 +283,41 @@ def find_nodes(filters: dict, n: int = 10) -> dict:
     return _clean(out)
 
 
+def network_resilience(removed: int | None = None) -> dict:
+    """Что будет с сетью, если изъять топ-N узлов по приоритету.
+
+    Опциональный пункт ТЗ. Рядом всегда идёт случайное изъятие такого же числа узлов:
+    без базиса цифра «171 компонента» ни о чём не говорит.
+    """
+    path = OUT / "resilience.csv"
+    if not path.exists():
+        return {"error": "out/resilience.csv нет — запустите python run.py"}
+
+    df = pd.read_csv(path)
+    if removed is not None:
+        df = df[df.removed == removed]
+        if df.empty:
+            return {"error": f"шага removed={removed} нет",
+                    "known_steps": pd.read_csv(path).removed.tolist()}
+
+    rows = []
+    for r in df.itertuples(index=False):
+        rows.append({
+            "removed": int(r.removed),
+            "components_targeted": int(r.components_targeted),
+            "components_random": float(r.components_random),
+            "largest_targeted": int(r.largest_targeted),
+            "largest_random": float(r.largest_random),
+            "isolated_targeted": int(r.isolated_targeted),
+            "ratio_vs_random": round(r.components_targeted / r.components_random, 1),
+        })
+    return _clean({
+        "steps": rows,
+        "note": "components_random — среднее по 5 прогонам случайного изъятия того же числа "
+                "узлов. Это проверка осмысленности топ-листа, а НЕ рекомендация блокировать счета.",
+    })
+
+
 TOOL_REGISTRY = {
     "get_node": get_node,
     "who_collects_from": who_collects_from,
@@ -290,4 +325,5 @@ TOOL_REGISTRY = {
     "top_nodes": top_nodes,
     "cluster_summary": cluster_summary,
     "find_nodes": find_nodes,
+    "network_resilience": network_resilience,
 }

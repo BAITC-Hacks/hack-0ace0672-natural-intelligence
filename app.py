@@ -230,6 +230,19 @@ def top():
     return json.loads(df.to_json(orient="records"))
 
 
+@app.get("/api/resilience")
+def resilience():
+    """Устойчивость сети при изъятии топ-N узлов (src/resilience.py, владелец kuanyshs).
+
+    Файла может не быть — если пайплайн запускали старой версией. Тогда отдаём
+    пустой список, а интерфейс просто не рисует блок.
+    """
+    p = OUT / "resilience.csv"
+    if not p.exists():
+        return []
+    return json.loads(_cached(p, pd.read_csv).to_json(orient="records"))
+
+
 @app.get("/api/clusters")
 def clusters():
     df = _cached(OUT / "clusters.csv", pd.read_csv).copy()
@@ -289,16 +302,23 @@ def _build_fallback() -> None:
         print(f"автономная схема не собралась ({exc}) — интерфейс это не ломает")
 
 
-@app.on_event("startup")
-def _startup() -> None:
-    if (OUT / "graph.json").exists():
-        threading.Thread(target=_build_fallback, daemon=True).start()
-
-
 app.mount("/web", StaticFiles(directory=WEB), name="web")
 
 
 if __name__ == "__main__":
+    import argparse
+
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    ap = argparse.ArgumentParser(description="Веб-интерфейс «Граф денег»")
+    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--host", default="127.0.0.1")
+    a = ap.parse_args()
+
+    if (OUT / "graph.json").exists():
+        threading.Thread(target=_build_fallback, daemon=True).start()
+    else:
+        print("Нет out/graph.json — сначала запустите: python run.py")
+
+    print(f"интерфейс аналитика: http://{a.host}:{a.port}")
+    uvicorn.run(app, host=a.host, port=a.port)

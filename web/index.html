@@ -489,6 +489,7 @@ function Chat({api, onGo, seed, onSeedUsed}) {
 function App() {
   const [meta, setMeta] = useState(null);
   const [top, setTop] = useState([]);
+  const [res, setRes] = useState([]);
   const [gid, setGid] = useState(null);
   const [q, setQ] = useState('');
   const [layout, setLayout] = useState('flow');
@@ -501,6 +502,9 @@ function App() {
   useEffect(() => {
     fetch('/api/meta').then(r => r.json()).then(setMeta).catch(() => {});
     fetch('/api/top').then(r => r.json()).then(setTop).catch(() => {});
+    // блок устойчивости появляется, только если ядро его посчитало
+    fetch('/api/resilience').then(r => r.json())
+      .then(d => setRes(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // Поиск по gid — must-have №5. Работает по всем 2248 узлам, а не только
@@ -601,6 +605,25 @@ function App() {
         <div className="sub" style={{fontSize:11,marginTop:6}}>
           Цифры: на схеме / всего в выгрузке. Клик по роли скрывает её.
         </div>
+
+        {!!res.length && <>
+          <h2>Устойчивость сети</h2>
+          <div className="sub" style={{fontSize:11,marginBottom:6}}>
+            Что станет с сетью, если изъять топ-N по приоритету — и столько же случайных узлов.
+          </div>
+          <div className="kv" style={{fontSize:11,color:'var(--muted)'}}>
+            <span>изъять</span><span>компонент: наши / случайные</span></div>
+          {res.map(r =>
+            <div className="kv" key={r.removed}>
+              <span>топ-{r.removed}</span>
+              <span><b style={{color:'var(--accent)'}}>{r.components_targeted}</b>
+                    {' / '}{r.components_random}</span>
+            </div>)}
+          <div className="sub" style={{fontSize:11,marginTop:6}}>
+            Изъятие наших {res[0].removed} узлов рвёт сеть на {res[0].components_targeted} частей,
+            случайных — всего на {res[0].components_random}.
+          </div>
+        </>}
 
         <h2>Топ приоритета</h2>
         {top.map(t =>

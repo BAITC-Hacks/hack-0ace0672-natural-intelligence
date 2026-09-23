@@ -264,7 +264,7 @@ def build(out: Path = OUT, layout: str = "flow", label_top: int = 12) -> Path:
                      title="{:,.0f} KZT, {} транзакций".format(s, e.get("n_tx", 0)).replace(",", " "))
 
     net.set_options(json.dumps({
-        "interaction": {"hover": True, "tooltipDelay": 80, "navigationButtons": True},
+        "interaction": {"hover": True, "tooltipDelay": 80},
         "edges": {"arrows": {"to": {"enabled": True, "scaleFactor": 0.5}}, "smooth": False},
         "physics": {"enabled": False},
     }))
@@ -282,24 +282,41 @@ def _add_legend(path: Path, nodes: list[dict]) -> None:
     for n in nodes:
         counts[n.get("role", "—")] = counts.get(n.get("role", "—"), 0) + 1
     items = "".join(
-        f'<div><i style="background:{ROLE_COLORS.get(r, "#2b3a52")}"></i>'
-        f'{ROLE_RU.get(r, r)} — {c}</div>'
+        f'<span><i style="background:{ROLE_COLORS.get(r, "#2b3a52")}"></i>'
+        f'{ROLE_RU.get(r, r)} — {c}</span>'
         for r, c in sorted(counts.items(), key=lambda kv: -kv[1])
     )
+    # Легенда — отдельной полосой сверху, а не плашкой поверх схемы:
+    # наложение съедало левую колонку графа после подгонки масштаба.
     block = f"""
 <style>
- body{{background:#0B1E3A;margin:0}}
- #legend{{position:fixed;top:14px;left:14px;z-index:99;background:rgba(17,41,76,.94);
-   border:1px solid #1d3a63;border-radius:10px;padding:12px 14px;color:#e8eef7;
-   font:13px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:290px}}
- #legend b{{display:block;font-size:14px;margin-bottom:6px}}
- #legend i{{display:inline-block;width:10px;height:10px;border-radius:99px;margin-right:7px}}
- #legend .n{{color:#93a8c6;font-size:11px;margin-top:8px;display:block;line-height:1.5}}
+ body{{background:#0B1E3A;margin:0;
+   font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e8eef7}}
+ #legend{{padding:10px 16px;background:#11294c;border-bottom:1px solid #1d3a63}}
+ #legend .t{{font-size:15px;font-weight:700;margin-right:18px}}
+ #legend .roles{{display:inline-flex;flex-wrap:wrap;gap:6px 16px;vertical-align:middle}}
+ #legend .roles span{{white-space:nowrap}}
+ #legend i{{display:inline-block;width:10px;height:10px;border-radius:99px;margin-right:6px}}
+ #legend .n{{color:#93a8c6;font-size:11.5px;margin-top:5px}}
+ #mynetwork{{height:calc(100vh - 82px) !important;border:0 !important}}
+ .card{{border:0 !important;background:transparent !important}}
 </style>
-<div id="legend"><b>Граф денег — автономная схема</b>{items}
-<span class="n">Размер узла — приоритет проверки, толщина ребра — сумма перевода,
-стрелка — направление денег. Наведите курсор на узел, чтобы увидеть обоснование роли.
-Показаны {len(nodes)} узлов с наибольшим приоритетом и их окружение.</span></div>
+<div id="legend">
+ <span class="t">Граф денег — автономная схема</span><span class="roles">{items}</span>
+ <div class="n">Размер узла — приоритет проверки, толщина ребра — сумма перевода,
+ стрелка — направление денег. Наведите курсор на узел, чтобы увидеть обоснование роли.
+ Показаны {len(nodes)} узлов с наибольшим приоритетом и их окружение; остальные ищутся
+ по gid в веб-интерфейсе (<code>python app.py</code>).</div>
+</div>
+<script>
+ // Координаты заданы жёстко, физика выключена — vis сам вид не подгоняет,
+ // и граф открывается вплотную. Подгоняем масштаб после отрисовки.
+ window.addEventListener('load', function () {{
+   setTimeout(function () {{
+     try {{ network.fit({{animation: false}}); }} catch (e) {{}}
+   }}, 120);
+ }});
+</script>
 """
     html = path.read_text(encoding="utf-8")
     path.write_text(html.replace("<body>", "<body>" + block, 1), encoding="utf-8")

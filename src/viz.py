@@ -247,7 +247,12 @@ def build(out: Path = OUT, layout: str = "flow", label_top: int = 12) -> Path:
     # подписи колонок: без них колена обхода приходится объяснять словами
     for i, g in enumerate(guides):
         net.add_node(f"__guide{i}", label=g["text"], x=g["x"], y=g["y"], physics=False,
-                     shape="text", font={"size": 40, "color": "#8fa7c9"})
+                     shape="text")
+    # `font` в add_node pyvis молча отбрасывает (проверено: ключа нет в готовом HTML),
+    # поэтому дописываем его прямо в узел — иначе подписи остаются кеглем 14.
+    for node in net.nodes:
+        if isinstance(node, dict) and str(node.get("id", "")).startswith("__guide"):
+            node["font"] = {"size": 40, "color": "#8fa7c9"}
 
     named = {n["id"] for n in sorted(nodes, key=lambda n: -n.get("priority", 0))[:label_top]}
     for n in nodes:

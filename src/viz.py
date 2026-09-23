@@ -29,6 +29,11 @@ ROLE_COLORS = {
     "peripheral": "#2b3a52",
 }
 
+# Ширина символа подписи в координатах раскладки: шрифт ориентиров — 44,
+# средний символ занимает примерно половину кегля. Нужна, чтобы прикинуть,
+# влезает ли подпись в свой остров.
+GUIDE_CHAR_W = 23.0
+
 ROLE_RU = {
     "coordinator": "координатор",
     "consolidator": "накопитель",
@@ -84,7 +89,7 @@ def flow_layout(nodes: list[dict], edges: list[dict],
     def place() -> None:
         for d in keys:
             col = order[d]
-            rows = max(1, min(len(col), int(height // 30)))
+            rows = max(1, min(len(col), int(height // 34)))
             k = math.ceil(len(col) / rows)
             rows = math.ceil(len(col) / k)
             sub_gap = min(105.0, band_gap * 0.40 / max(1, k - 1)) if k > 1 else 0.0
@@ -162,8 +167,13 @@ def cluster_layout(nodes: list[dict], edges: list[dict],
         cx, cy = x + r, y + r
         for nid, p in local.items():
             pos[nid] = {"x": cx + p[0] / mx * r, "y": cy + p[1] / mx * r}
-        guides.append({"x": cx, "y": cy - r - 26,
-                       "text": f"кластер {c} · {len(members)}"})
+        # Подпись не должна быть шире своего острова — иначе соседние сливаются
+        # в нечитаемую строку. Не поместилась даже короткая: остров без подписи,
+        # номер кластера всё равно виден в карточке узла.
+        for text in (f"кластер {c} · {len(members)}", f"№{c} · {len(members)}"):
+            if 2 * r > len(text) * GUIDE_CHAR_W:
+                guides.append({"x": cx, "y": cy - r - 26, "text": text})
+                break
         x += 2 * r + pad
         row_h = max(row_h, 2 * r)
 
@@ -237,7 +247,7 @@ def build(out: Path = OUT, layout: str = "flow", label_top: int = 12) -> Path:
     # подписи колонок: без них колена обхода приходится объяснять словами
     for i, g in enumerate(guides):
         net.add_node(f"__guide{i}", label=g["text"], x=g["x"], y=g["y"], physics=False,
-                     shape="text", font={"size": 22, "color": "#93a8c6"})
+                     shape="text", font={"size": 40, "color": "#8fa7c9"})
 
     named = {n["id"] for n in sorted(nodes, key=lambda n: -n.get("priority", 0))[:label_top]}
     for n in nodes:

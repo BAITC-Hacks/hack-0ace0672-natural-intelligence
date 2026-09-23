@@ -155,13 +155,17 @@ function Graph({onPick, api, layout, hidden, labels}) {
         style:[
           {selector:'node', style:{
             'background-color': el => ROLE_COLORS[el.data('role')] || '#2b3a52',
-            'width':  el => 9 + el.data('priority')*30,
-            'height': el => 9 + el.data('priority')*30,
-            'border-width': el => el.data('is_seed') ? 2.5 : 0,
+            // размеры в координатах раскладки: при подгонке под экран масштаб ~0.4,
+            // поэтому модельные 12..48 дают на экране читаемые 5..19 px
+            'width':  el => 12 + el.data('priority')*36,
+            'height': el => 12 + el.data('priority')*36,
+            'border-width': el => el.data('is_seed') ? 3 : 0,
             'border-color':'#dbe7f7',
-            'label':'data(label)', 'color':'#dfeaf8', 'font-size':11,
-            'text-outline-width':2.5, 'text-outline-color':'#0B1E3A',
-            'text-valign':'center', 'text-halign':'right', 'text-margin-x':5
+            // шрифт тоже в координатах раскладки — 26 превращается в ~10 px на экране
+            'label':'data(label)', 'color':'#dfeaf8', 'font-size':26,
+            'min-zoomed-font-size':7,
+            'text-outline-width':5, 'text-outline-color':'#0B1E3A',
+            'text-valign':'center', 'text-halign':'right', 'text-margin-x':7
           }},
           {selector:'edge', style:{
             // корень 0.4 степени: медианный перевод остаётся тонким, крупные потоки
@@ -173,14 +177,14 @@ function Graph({onPick, api, layout, hidden, labels}) {
           }},
           // найденный узел
           {selector:'node.hit', style:{
-            'background-color':'#ffffff', 'border-width':5, 'border-color':'#2DD4BF',
-            'width':38, 'height':38, 'z-index':99,
-            'label':'data(id)', 'font-size':13, 'color':'#ffffff', 'font-weight':'bold'
+            'background-color':'#ffffff', 'border-width':7, 'border-color':'#2DD4BF',
+            'width':46, 'height':46, 'z-index':99,
+            'label':'data(id)', 'font-size':30, 'color':'#ffffff', 'font-weight':'bold'
           }},
           // соседи найденного
           {selector:'node.near', style:{
-            'border-width':2.5, 'border-color':'#2DD4BF', 'z-index':50,
-            'label':'data(short)', 'font-size':10
+            'border-width':3, 'border-color':'#2DD4BF', 'z-index':50,
+            'label':'data(short)', 'font-size':22
           }},
           {selector:'edge.near', style:{
             'line-color':'#2DD4BF', 'target-arrow-color':'#2DD4BF',
@@ -195,7 +199,7 @@ function Graph({onPick, api, layout, hidden, labels}) {
           }},
           {selector:'node[?axis]', style:{
             'background-opacity':0, 'border-width':0, 'width':1, 'height':1,
-            'label':'data(label)', 'color':'#7f97b9', 'font-size':20, 'font-weight':'bold',
+            'label':'data(label)', 'color':'#8fa7c9', 'font-size':44, 'font-weight':'bold',
             'text-valign':'center', 'text-halign':'center', 'text-margin-x':0,
             'text-outline-width':4, 'text-outline-color':'#0B1E3A', 'events':'no', 'z-index':1
           }},

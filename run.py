@@ -10,7 +10,7 @@ import argparse
 import time
 from pathlib import Path
 
-from src import clusters, features, priority, roles, schema
+from src import clusters, features, priority, resilience, roles, schema
 from src.io import DATA_DIR, OUT_DIR, build_graph, load, seeds
 from src.mock import write_graph_json
 
@@ -39,6 +39,11 @@ def main() -> None:
     print("\nраспределение ролей:")
     print(df.role.value_counts().to_string())
     print("\n" + priority.sanity(df))
+
+    res = resilience.report(df, G)
+    print("\nУСТОЙЧИВОСТЬ СЕТИ при изъятии топ-N узлов (опциональный пункт ТЗ)")
+    print(resilience.render(res))
+    res.to_csv(a.out / "resilience.csv", index=False)
 
     extra = ["depth", "is_seed", "in_deg", "out_deg", "in_kzt", "out_kzt",
              "transit_ratio", "net_flow", "external_funding_gap", "taint_share",

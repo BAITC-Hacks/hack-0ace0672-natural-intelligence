@@ -36,12 +36,17 @@ SYSTEM = f"""Ты — ассистент AML-аналитика. Работае�
 5. Если данных не хватает — так и скажи и предложи, какой запрос сделать следующим.
 6. Не придумывай gid. Узел существует, только если его вернул инструмент.
 
-Роли назначаются пороговыми правилами, пороги — перцентили нашего распределения:
-transit — transit_ratio >= {roles.TRANSIT_RATIO_MIN}; consolidator — in_deg >= P90 и net_flow >= {roles.NET_FLOW_CONSOLIDATE};
-distributor — out_deg >= P90, net_flow <= {roles.NET_FLOW_DISTRIBUTE}, hhi_out < {roles.HHI_OUT_FAN};
-coordinator — деньги от >= 2 фигурантов, out_deg >= {roles.COORD_MIN_OUT_DEG}, taint >= P75;
+Роли назначаются пороговыми правилами, проверяются сверху вниз, первое совпадение выигрывает:
+transit — transit_ratio >= {roles.TRANSIT_RATIO_MIN};
+consolidator — in_deg >= {roles.MIN_IN_DEG_CONSOLIDATOR} и net_flow >= {roles.NET_FLOW_CONSOLIDATE};
+distributor — out_deg >= {roles.MIN_OUT_DEG_DISTRIBUTOR}, net_flow <= {roles.NET_FLOW_DISTRIBUTE}, hhi_out < {roles.HHI_OUT_FAN};
+coordinator — деньги от >= {roles.COORD_MIN_SEEDS} фигурантов, in_deg >= {roles.COORD_MIN_IN_DEG} и out_deg >= {roles.COORD_MIN_OUT_DEG};
 terminal — нет исходящих, обход узел разворачивал; terminal_unknown — нет исходящих,
 но узел на 4-м колене и обход оборван, конечность НЕ подтверждена.
+Узел с крупным оборотом получает роль по направлению потока даже при двух контрагентах,
+но с низким role_score: признак есть, но слабый.
+taint_share в правила и в приоритет НЕ входит: у 75% узлов он равен ровно 1.0, потому что
+граф построен обходом от seed. Это контекст, а не ранжирующий признак.
 
 Ограничения данных, о которых надо помнить: видны только исходящие переводы;
 транзакции меньше 5000 KZT в выгрузку не попали; узлы 4-го колена обрезаны обходом;
@@ -177,6 +182,15 @@ _NOT_ENOUGH = """Чего не хватает, чтобы закрыть бел�
 Все перечисленное — ограничения выгрузки, а не результат анализа."""
 
 
+def _kzt(v: float) -> str:
+    """Тот же формат сумм, что в evidence: «0.0 млн» превращает мелкие суммы в ноль."""
+    if v >= 1e6:
+        return f"{v/1e6:.1f} млн"
+    if v >= 1e3:
+        return f"{v/1e3:.0f} тыс"
+    return f"{v:.0f} KZT"
+
+
 def _fmt_node(d: dict) -> str:
     return (f"Узел {d['gid']}: роль {d['role']} (уверенность {d['role_score']}), "
             f"кластер {d['cluster_id']}, приоритет проверки {d['priority_score']}.\n"
@@ -200,23 +214,34 @@ def _explain_role(d: dict) -> str:
         why = (f"вход и выход сходятся: transit_ratio {d['transit_ratio']:.2f} при пороге "
                f"{roles.TRANSIT_RATIO_MIN} — деньги проходят насквозь, а не оседают.")
     elif r == "consolidator":
-        why = (f"получает от {d['in_deg']} плательщиков и удерживает: net_flow {d['net_flow']:.2f} "
-               f"при пороге {roles.NET_FLOW_CONSOLIDATE} — признаки точки сбора средств.")
+        why = (f"получает от {d['in_deg']} плательщиков (порог {roles.MIN_IN_DEG_CONSOLIDATOR}) "
+               f"и удерживает: net_flow {d['net_flow']:.2f} при пороге {roles.NET_FLOW_CONSOLIDATE} — "
+               f"признаки точки сбора средств.")
+        if d["in_deg"] < roles.MIN_IN_DEG_CONSOLIDATOR:
+            why = (f"плательщиков всего {d['in_deg']}, но оборот попадает в верхние 10% выборки, "
+                   f"а поток направлен на накопление (net_flow {d['net_flow']:.2f}). Роль назначена "
+                   f"по объёму, поэтому уверенность низкая — {d['role_score']}.")
     elif r == "distributor":
-        why = (f"рассылает на {d['out_deg']} получателей, net_flow {d['net_flow']:.2f} при пороге "
-               f"{roles.NET_FLOW_DISTRIBUTE}, концентрация получателей hhi_out {d['hhi_out']:.2f} "
-               f"при пороге {roles.HHI_OUT_FAN} — это настоящий веер, а не раздача двоим.")
+        why = (f"рассылает на {d['out_deg']} получателей (порог {roles.MIN_OUT_DEG_DISTRIBUTOR}), "
+               f"net_flow {d['net_flow']:.2f} при пороге {roles.NET_FLOW_DISTRIBUTE}, концентрация "
+               f"получателей hhi_out {d['hhi_out']:.2f} при пороге {roles.HHI_OUT_FAN} — "
+               f"это настоящий веер, а не раздача двоим.")
+        if d["out_deg"] < roles.MIN_OUT_DEG_DISTRIBUTOR:
+            why = (f"получателей всего {d['out_deg']}, но оборот попадает в верхние 10% выборки, "
+                   f"а поток направлен на раздачу (net_flow {d['net_flow']:.2f}). Роль назначена "
+                   f"по объёму, поэтому уверенность низкая — {d['role_score']}.")
     elif r == "coordinator":
-        why = (f"деньги приходят от {d['n_seeds_upstream']} разных фигурантов, узел одновременно "
-               f"собирает ({d['in_deg']} плательщиков) и раздаёт ({d['out_deg']} получателей), "
-               f"taint {d['taint_share']:.2f}.")
+        why = (f"деньги приходят от {d['n_seeds_upstream']} разных фигурантов (порог "
+               f"{roles.COORD_MIN_SEEDS}), узел одновременно собирает ({d['in_deg']} плательщиков) "
+               f"и раздаёт ({d['out_deg']} получателей) — для аналитика это важнее, чем частные "
+               f"признаки consolidator или distributor, поэтому роль перекрывает их.")
     else:
         why = (f"связей мало: {d['in_deg']} входящих и {d['out_deg']} исходящих контрагентов — "
                f"под пороги активных ролей узел не подходит.")
 
     tail = ""
     if d.get("external_funding_gap", 0) > 0:
-        tail = (f"\nОтдельно: расход превышает приход на {d['external_funding_gap']/1e6:.1f} млн — "
+        tail = (f"\nОтдельно: расход превышает приход на {_kzt(d['external_funding_gap'])} — "
                 f"источник этих денег вне выборки, требует запроса входящих.")
     return f"Узел {d['gid']} получил роль {r}, потому что {why}{tail}"
 
